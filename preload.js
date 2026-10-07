@@ -6,7 +6,9 @@ contextBridge.exposeInMainWorld('m2a', {
   settingsGet: () => ipcRenderer.invoke('settings:get'),
   settingsSet: (patch) => ipcRenderer.invoke('settings:set', patch),
   cliProviderStatus: () => ipcRenderer.invoke('cli-providers:status'),
+  screenList: () => ipcRenderer.invoke('screen:list'),
   whisperModels: () => ipcRenderer.invoke('whisper:models'),
+  whisperRuntimePrepare: () => ipcRenderer.invoke('whisper:runtime-prepare'),
   whisperModelDownload: (modelId) => ipcRenderer.invoke('whisper:model-download', modelId),
   whisperModelCancel: (modelId) => ipcRenderer.invoke('whisper:model-cancel', modelId),
   whisperModelDelete: (modelId) => ipcRenderer.invoke('whisper:model-delete', modelId),
@@ -24,6 +26,9 @@ contextBridge.exposeInMainWorld('m2a', {
   windowDragStart: () => ipcRenderer.send('window:drag-start'),
   windowDragEnd: () => ipcRenderer.send('window:drag-end'),
   clearTranscript: () => ipcRenderer.invoke('transcript:clear'),
+  meetingsList: (query = '') => ipcRenderer.invoke('meetings:list', query),
+  meetingsGet: (id) => ipcRenderer.invoke('meetings:get', id),
+  meetingsRemove: (id) => ipcRenderer.invoke('meetings:remove', id),
   slidesList: () => ipcRenderer.invoke('slides:list'),
   slidesState: () => ipcRenderer.invoke('slides:state'),
   slidesClear: () => ipcRenderer.invoke('slides:clear'),
@@ -38,14 +43,18 @@ contextBridge.exposeInMainWorld('m2a', {
   appLinkState: () => ipcRenderer.invoke('applink:state'),
   appLinkRevoke: (callerId) => ipcRenderer.invoke('applink:revoke', callerId),
   appLinkConsentRespond: (id, allowed) => ipcRenderer.send('applink:consent-response', { id, allowed }),
-  pickProfileDocument: () => ipcRenderer.invoke('profile:pickDocument'),
+  pickSessionContextFiles: () => ipcRenderer.invoke('session-context:pick-files'),
+  fetchSessionContextUrl: (url) => ipcRenderer.invoke('session-context:fetch-url', url),
+  sessionContextGet: () => ipcRenderer.invoke('session-context:get'),
+  sessionContextSet: (value) => ipcRenderer.invoke('session-context:set', value),
+  sessionContextClear: () => ipcRenderer.invoke('session-context:clear'),
   quit: () => ipcRenderer.send('app:quit'),
   permissionsCheck: () => ipcRenderer.invoke('permissions:check'),
   permissionsRequest: () => ipcRenderer.invoke('permissions:request'),
   permissionsContinue: () => ipcRenderer.send('permissions:continue'),
   log: (msg) => ipcRenderer.send('log', msg),
   on: (channel, cb) => {
-    const allowed = ['capture:state', 'llm:start', 'llm:token', 'llm:done', 'llm:error', 'status', 'transcript', 'transcript:restore', 'stt:interim', 'stt:final', 'stt:status', 'vad:state', 'applink:consent-request', 'hide:toggle', 'whisper:download-progress', 'whisper:models-changed', 'publik:state', 'slides:update'];
+    const allowed = ['capture:state', 'llm:start', 'llm:token', 'llm:done', 'llm:error', 'status', 'transcript', 'transcript:restore', 'stt:interim', 'stt:final', 'stt:status', 'vad:state', 'applink:consent-request', 'hide:toggle', 'whisper:download-progress', 'whisper:models-changed', 'publik:state', 'slides:update', 'session-context:changed'];
     if (!allowed.includes(channel)) return;
     ipcRenderer.on(channel, (_e, data) => cb(data));
   }

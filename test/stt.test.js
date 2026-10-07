@@ -14,3 +14,15 @@ test('keeps Custom chat credentials separate from speech-to-text providers', asy
   assert.deepEqual(speechToText.providers, []);
   assert.deepEqual(await speechToText.transcribe(Buffer.alloc(6400)), { text: '' });
 });
+
+test('uses only dedicated Custom speech credentials for transcription', () => {
+  const speechToText = createSTT({
+    sttProvider: 'custom',
+    apiKeys: { custom: 'chat-token' },
+    baseUrl: 'https://chat.example/v1',
+    sttApiKeys: { custom: 'speech-token' },
+    sttBaseUrl: 'https://speech.example/v1'
+  });
+  assert.equal(speechToText.available, true);
+  assert.deepEqual(speechToText.providers, ['custom']);
+});

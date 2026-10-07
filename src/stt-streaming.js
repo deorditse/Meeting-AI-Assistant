@@ -5,7 +5,7 @@
 // This module manages a persistent WebSocket connection for real-time transcription
 // with sub-200ms latency, interim results, and automatic reconnection.
 
-const { looksLikeHallucination, transcribeGemini, buildVocabPrompt } = require('./stt');
+const { cleanTranscript, transcribeGemini, buildVocabPrompt } = require('./stt');
 const { pcmToWav } = require('./wav');
 const { GEMINI_TRANSCRIBE_LIVE_MODEL } = require('./llm');
 
@@ -335,7 +335,8 @@ class DeepgramStreamingSTT {
       if (msg.speech_final) {
         const full = ((this._committed || '') + ' ' + text).trim();
         this._committed = '';
-        if (full && !looksLikeHallucination(full)) this.onTranscript(full);
+        const cleaned = cleanTranscript(full);
+        if (cleaned) this.onTranscript(cleaned);
         this.onInterim('');
         return;
       }
@@ -358,7 +359,8 @@ class DeepgramStreamingSTT {
   _flushCommitted() {
     const full = (this._committed || '').trim();
     this._committed = '';
-    if (full && !looksLikeHallucination(full)) this.onTranscript(full);
+    const cleaned = cleanTranscript(full);
+    if (cleaned) this.onTranscript(cleaned);
     this.onInterim('');
   }
 
@@ -508,7 +510,8 @@ class GeminiLiveSTT {
     } else if (sc.inputTranscription && typeof sc.inputTranscription.text === 'string') {
       const text = sc.inputTranscription.text.trim();
       this._lastInterim = '';
-      if (text && !looksLikeHallucination(text)) this.onTranscript(text);
+      const cleaned = cleanTranscript(text);
+      if (cleaned) this.onTranscript(cleaned);
       this.onInterim('');
     }
   }
@@ -528,7 +531,8 @@ class GeminiLiveSTT {
   _flushInterimAsFinal() {
     const text = (this._lastInterim || '').trim();
     this._lastInterim = '';
-    if (text && !looksLikeHallucination(text)) this.onTranscript(text);
+    const cleaned = cleanTranscript(text);
+    if (cleaned) this.onTranscript(cleaned);
     this.onInterim('');
   }
 
@@ -610,6 +614,7 @@ const transcribeBatchGemini = transcribeGemini;
 
 function createStreamingSTT(settings, channel, callbacks) {
   const keys = settings.apiKeys || {};
+  const speechKeys = settings.sttApiKeys || {};
   const selectedProvider = settings.sttProvider || 'auto';
   const { onTranscript, onInterim, onError, onStatusChange } = callbacks;
 
@@ -630,8 +635,9 @@ function createStreamingSTT(settings, channel, callbacks) {
   }
 
   // Priority 2: OpenAI Realtime API (excellent quality, slightly higher latency)
-  if ((selectedProvider === 'auto' || selectedProvider === 'openai') && keys.openai) {
-    const stt = new OpenAIRealtimeSTT(keys.openai, {
+  const openaiKey = selectedProvider === 'openai' ? speechKeys.openai : keys.openai;
+  if ((selectedProvider === 'auto' || selectedProvider === 'openai') && openaiKey) {
+    const stt = new OpenAIRealtimeSTT(openaiKey, {
       model: 'gpt-realtime-whisper', // only this model gives true streaming deltas
       onTranscript: (text) => onTranscript(channel, text),
       onInterim: (text) => onInterim(channel, text),

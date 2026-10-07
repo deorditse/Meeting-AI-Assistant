@@ -63,3 +63,20 @@ test('splits long speech into bounded segments with overlap', () => {
   assert.equal(utterances[1].length, FRAME_BYTES * 10);
   assert.ok(utterances.every((pcm) => pcm.length <= FRAME_BYTES * 10));
 });
+
+test('discards a short noise burst instead of leaving an utterance open', () => {
+  const utterances = [];
+  const states = [];
+  const segmenter = new UtteranceSegmenter({
+    channel: 'you',
+    vadOptions: { minSpeechFrames: 6, silenceFrames: 4 },
+    onSpeechState: (_channel, speaking) => states.push(speaking),
+    onUtterance: (_channel, pcm) => utterances.push(pcm)
+  });
+  pushFrames(segmenter, 1200, 2);
+  pushFrames(segmenter, 0, 4);
+  pushFrames(segmenter, 0, 6);
+  segmenter.stop();
+  assert.equal(utterances.length, 0);
+  assert.deepEqual(states, [true, false]);
+});

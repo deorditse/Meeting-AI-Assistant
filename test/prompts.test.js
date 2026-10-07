@@ -77,6 +77,11 @@ test('every non-leetcode mode returns the base prompt unchanged when no rules ar
   }
 });
 
+test('only the explicit screenshot mode requests screen pixels', () => {
+  const screenModes = Object.entries(MODES).filter(([, mode]) => mode.needsScreen).map(([name]) => name);
+  assert.deepEqual(screenModes, ['screen']);
+});
+
 test('leetcode mode never applies AI rules (coding answers stay strict)', () => {
   const withRules = MODES.leetcode.buildSystem(null, RULES);
   assert.ok(!withRules.includes('USER RULES'), 'leetcode must not include USER RULES');

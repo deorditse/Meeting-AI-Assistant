@@ -1,5 +1,5 @@
-// Extracts plain text from a resume/job-description file (PDF or DOCX) so it can be
-// dropped into the existing Settings textareas. No OCR — text layer only.
+// Extracts plain text from documents used as profile or session context.
+// PDF files need a text layer; image-only documents are intentionally not OCRed.
 const fs = require('fs');
 const path = require('path');
 
@@ -16,7 +16,10 @@ async function parseDocumentFile(filePath) {
     const res = await mammoth.extractRawText({ buffer: buf });
     return (res.value || '').trim();
   }
-  throw new Error('Unsupported file type: ' + (ext || '(none)') + '. Use a PDF or DOCX file.');
+  if (['.txt', '.md', '.markdown', '.csv', '.json', '.html', '.htm'].includes(ext)) {
+    return buf.toString('utf8').replace(/^\uFEFF/, '').trim();
+  }
+  throw new Error('Неподдерживаемый тип файла: ' + (ext || '(без расширения)') + '. Используйте PDF, DOCX, TXT, MD, CSV, JSON или HTML.');
 }
 
 module.exports = { parseDocumentFile };

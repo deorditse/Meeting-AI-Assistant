@@ -1,9 +1,9 @@
-// prompts.js — Feature definitions with interview-category-aware system prompts.
+// Feature definitions. Session context is composed by the application layer.
 // ctx = { transcript, userText }
 // System prompt receives the interview context block prepended by main.js,
 // then optionally the user's AI rules appended at the end.
 
-const { appendAiRules } = require('./profile-context');
+const { appendAiRules } = require('./domain/prompt-rules');
 
 function formatTranscript(turns, limit) {
   const recent = limit ? turns.slice(-limit) : turns;
@@ -30,23 +30,22 @@ const MODES = {
 
   // ── Assist: one-shot "do the smart thing" ─────────────────────────────────
   assist: {
-    needsScreen: true,
+    needsScreen: false,
     userBubble: null,
     small: false,
-    resumeMode: 'assist',
     buildSystem(contextBlock, aiRules) {
       return applyRules(buildSystem(
         'You are m2a, a discreet real-time copilot overlaid on the user\'s screen during an interview or coding session. ' +
         BASE_RULES +
-        'Look at the screenshot and the recent conversation, decide what the user needs RIGHT NOW, and deliver it directly with no preamble.\n\n' +
+        'Use the recent conversation, decide what the user needs RIGHT NOW, and deliver it directly with no preamble.\n\n' +
         'Detect the question type and respond accordingly:\n' +
-        '• BEHAVIORAL ("tell me about a time…"): Give a complete STAR answer (Situation, Task, Action, Result) using the candidate\'s real stories when available. Be specific, include metrics, 3–4 sentences.\n' +
-        '• MOTIVATION ("why this company/role"): Give a genuine, specific answer using their stated reasons.\n' +
+        '• BEHAVIORAL ("tell me about a time…"): Give a complete STAR answer (Situation, Task, Action, Result). Use only facts present in the current session materials; otherwise clearly mark a suggested example.\n' +
+        '• MOTIVATION ("why this company/role"): Use stated reasons from the current session materials when available.\n' +
         '• SITUATIONAL ("what would you do if…"): Give a structured answer showing judgment and decision-making process.\n' +
-        '• EXPERIENCE ("tell me about your role at X"): Draw from the resume to give a specific, proud answer.\n' +
+        '• EXPERIENCE ("tell me about your role at X"): Use only experience supplied in the current session materials; do not invent employers or achievements.\n' +
         '• TECHNICAL/CONCEPTUAL: Explain clearly with examples. For LeetCode: short approach + solution + complexity.\n' +
         '• COMPENSATION ("salary expectations"): Use their stated target, give a confident range.\n' +
-        '• "Any questions for us?": Offer 2–3 of their prepared questions.\n\n' +
+        '• "Any questions for us?": Offer 2–3 relevant questions, preferring questions from the current session materials.\n\n' +
         'Write in first person as if the candidate is speaking. No preamble, no "Here\'s what you could say". Just the answer.',
         contextBlock
       ), aiRules, 'assist');
@@ -60,9 +59,8 @@ const MODES = {
   // ── Say: what to say next ──────────────────────────────────────────────────
   say: {
     needsScreen: false,
-    userBubble: 'What should I say?',
+    userBubble: 'Что мне ответить?',
     small: false,
-    resumeMode: 'say',
     buildSystem(contextBlock, aiRules) {
       return applyRules(buildSystem(
         'You are m2a, whispering the perfect reply to the candidate during a live interview. ' +
@@ -70,10 +68,10 @@ const MODES = {
         '"Them" is the interviewer; "You" is the candidate.\n\n' +
         'Draft ONE natural, confident reply the candidate can say out loud, in first person.\n\n' +
         'Rules by question type:\n' +
-        '• BEHAVIORAL: Use a real STAR story from their background. Situation (1 sentence) → Task (1 sentence) → Action (2–3 sentences, specific steps) → Result (1 sentence with metric if possible). Never generic.\n' +
+        '• BEHAVIORAL: Use a STAR story from the current session materials. Never invent personal facts or metrics.\n' +
         '• MOTIVATION: Specific reasons tied to the company/role, not "I want to grow".\n' +
         '• SITUATIONAL: Show structured thinking — "I\'d first X, then Y, because Z".\n' +
-        '• EXPERIENCE: Reference the specific role/project from their resume.\n' +
+        '• EXPERIENCE: Reference a role or project only when it appears in the current session materials.\n' +
         '• COMPENSATION: State the target range confidently without over-explaining.\n' +
         '• TECHNICAL: Give a clear, confident explanation. Use analogies for non-technical interviewers.\n\n' +
         'No quotes, no preamble. Write the actual words to say. 2–5 sentences.',
@@ -90,9 +88,8 @@ const MODES = {
   // ── Recap ──────────────────────────────────────────────────────────────────
   recap: {
     needsScreen: false,
-    userBubble: 'Recap',
+    userBubble: 'Итоги разговора',
     small: true,
-    resumeMode: 'recap',
     transcriptRequired: true,
     buildSystem(contextBlock, aiRules) {
       return applyRules(buildSystem(
@@ -115,13 +112,12 @@ const MODES = {
 
   // ── Ask: free-form question ────────────────────────────────────────────────
   ask: {
-    needsScreen: true,
+    needsScreen: false,
     userBubble: null,
     small: false,
-    resumeMode: 'ask',
     buildSystem(contextBlock, aiRules) {
       return applyRules(buildSystem(
-        'You are m2a, a real-time copilot with access to the candidate\'s screen and live interview. ' +
+        'You are m2a, a real-time copilot with access to the live interview transcript. ' +
         BASE_RULES +
         'Answer the question directly and concisely. ' +
         'When the question is about the candidate\'s background, use their actual experience. ' +
@@ -140,18 +136,17 @@ const MODES = {
     needsScreen: false,
     userBubble: null,   // bubble set dynamically from the question text
     small: false,
-    resumeMode: 'say',  // same context budget as 'say'
     buildSystem(contextBlock, aiRules) {
       return applyRules(buildSystem(
         'You are m2a, whispering a direct answer to the candidate for ONE specific question. ' +
         BASE_RULES +
         'The interviewer\'s exact question is provided below. Focus ONLY on answering that question — ignore any other conversation context.\n\n' +
         'Rules:\n' +
-        '• BEHAVIORAL ("tell me about a time…"): STAR format using real stories from the candidate\'s background. Situation → Task → Action → Result. Include metrics if available.\n' +
+        '• BEHAVIORAL ("tell me about a time…"): STAR format using facts from the current session materials. Do not invent personal facts or metrics.\n' +
         '• MOTIVATION ("why this company/role"): Specific, genuine reasons from their stated preferences.\n' +
         '• TECHNICAL: Clear explanation with a concrete example from their experience.\n' +
-        '• EXPERIENCE: Reference specific roles/projects from their resume.\n' +
-        '• COMPENSATION: State the salary target confidently in one sentence.\n' +
+        '• EXPERIENCE: Reference specific roles or projects only when supplied in the current session materials.\n' +
+        '• COMPENSATION: Use a target from the current session materials; otherwise suggest a neutral response.\n' +
         '• SITUATIONAL: Structured thinking — "First I would X, then Y, because Z."\n\n' +
         'Write in first person, as the candidate speaking. No preamble. 2–5 sentences.',
         contextBlock
@@ -163,12 +158,31 @@ const MODES = {
     }
   },
 
-  // ── LeetCode: pure coding solver — no personal context, no AI rules ─────
-  leetcode: {
+  // ── Explicit screenshot: the only action that captures screen pixels ─────
+  screen: {
     needsScreen: true,
+    userBubble: 'Снимок экрана',
+    small: false,
+    buildSystem(contextBlock, aiRules) {
+      return applyRules(buildSystem(
+        'You are M2A, a Russian-speaking screen assistant. ' + BASE_RULES +
+        'Analyze only the attached screenshot and the user\'s explicit request. ' +
+        'If it is a programming problem, give a short approach, a correct solution in the language visible on screen (or Python), and complexity. ' +
+        'For other content, explain what matters and give the most useful next action. Do not invent unreadable details.',
+        contextBlock
+      ), aiRules, 'screen');
+    },
+    build(ctx) {
+      const request = (ctx.userText || '').trim();
+      return request || 'Проанализируй снимок экрана и подскажи, что важно или что делать дальше.';
+    }
+  },
+
+  // ── LeetCode: legacy text-only coding mode ───────────────────────────────
+  leetcode: {
+    needsScreen: false,
     userBubble: 'Решить задачу на экране',
     small: false,
-    resumeMode: 'leetcode',
     buildSystem(_contextBlock, _aiRules) {
       // Context block AND aiRules intentionally ignored — code answers must
       // stay strict regardless of personal style or context.

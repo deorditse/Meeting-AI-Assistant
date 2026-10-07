@@ -11,7 +11,12 @@ const { MODES } = require('./src/prompts');
 const { rms16 } = require('./src/wav');
 const { createStreamingSTT } = require('./src/stt-streaming');
 const { AdaptiveVAD, AudioRingBuffer } = require('./src/vad');
-const { buildInterviewContext, detectCategory } = require('./src/interview-context');
+const { detectCategory } = require('./src/domain/question-category');
+const { selectTranscript } = require('./src/domain/transcript-selection');
+const { createSessionContextService } = require('./src/application/session-context-service');
+const { createWhisperRuntimeService } = require('./src/application/whisper-runtime-service');
+const { registerSessionContextIpc } = require('./src/infrastructure/electron/register-session-context-ipc');
+const { registerWhisperRuntimeIpc } = require('./src/infrastructure/electron/register-whisper-runtime-ipc');
 const { startAppLink, stopAppLink, recordEvent, appLinkConsentState, revokeAppLinkCaller } = require('./src/applink');
 const publik = require('./src/publik');
 // The app token release.yml baked into src/publik-build.json (empty in a dev
@@ -19,6 +24,8 @@ const publik = require('./src/publik');
 const publikBuild = publik.loadBuildConfig();
 const { createMeetingStore } = require('./src/meetings');
 const { createMeetingMemory } = require('./src/meeting-memory');
+const { createMeetingHistoryService } = require('./src/application/meeting-history-service');
+const { registerMeetingHistoryIpc } = require('./src/infrastructure/electron/register-meeting-history-ipc');
 const { migrateLegacyUserData } = require('./src/user-data-migration');
 const {
   hashRGBA,
@@ -48,7 +55,6 @@ if (process.platform === 'linux') {
 }
 const { WhisperModelManager } = require('./src/whisper-model-manager');
 const { requireWhisperModel } = require('./src/whisper-model-catalog');
-const { locateWhisperRuntime } = require('./src/whisper-runtime');
 const { LocalWhisperTranscriber } = require('./src/local-whisper-transcriber');
 
 let win = null;
@@ -61,6 +67,22 @@ const isMac = process.platform === 'darwin';
 const isWindows = process.platform === 'win32';
 const isLinux = process.platform === 'linux';
 const rendererDevUrl = process.env.M2A_VITE_DEV_SERVER_URL || '';
+let lastScreenPermissionOpenAt = 0;
+
+async function requestAndOpenScreenPermission() {
+  // desktopCapturer is the closest macOS offers to a programmatic screen
+  // permission request. If the OS does not show a prompt, open the exact pane.
+  try { await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 16, height: 16 } }); } catch (_) {}
+  const now = Date.now();
+  if (now - lastScreenPermissionOpenAt < 3000) return;
+  lastScreenPermissionOpenAt = now;
+  const url = process.platform === 'darwin'
+    ? 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture'
+    : process.platform === 'win32'
+      ? 'ms-settings:privacy-screenrecorder'
+      : '';
+  if (url) await shell.openExternal(url).catch(() => {});
+}
 
 function loadRendererPage(browserWindow, page = 'index.html') {
   if (rendererDevUrl) {
@@ -115,11 +137,15 @@ let appLaunched = false;
 
 // -------- capture / transcript state --------
 const state = { capturing: false, busy: false, transcribing: { you: false, them: false } };
+let activeFeature = null;
+let featureSequence = 0;
+let transcriptSequence = 0;
 let sttDisabled = false; // set when the key can't reach any speech model (stops retry spam)
 const buffers = { you: [], them: [] };
 const transcript = []; // { channel, text, ts } — capped at MAX_TRANSCRIPT_TURNS
 const MAX_TRANSCRIPT_TURNS = 200; // ~30–40 minutes of conversation at normal pace
 let meetingMemory = null; // persists the transcript per meeting + notes; see src/meeting-memory.js
+let meetingStore = null;
 let restoredTurns = []; // turns of an interrupted meeting resumed at launch, replayed to the renderer once
 // -------- slides state (memory-only, never written to disk) --------
 let slideStore = createSlideStore({ maxSlides: 50 });
@@ -140,7 +166,6 @@ let localWhisperTranscriber = null;
 let activeWhisperModelId = null;
 let desiredCaptureState = false;
 let captureTransition = Promise.resolve(false);
-
 // -------- streaming STT state --------
 let streamingSTT = { you: null, them: null }; // streaming STT instances per channel
 let streamingMode = false; // true when using WebSocket streaming STT
@@ -167,6 +192,7 @@ const ringBuffers = {
 };
 
 function pushTranscript(turn) {
+  if (!turn.id) turn.id = `${Number(turn.ts) || Date.now()}-${++transcriptSequence}`;
   transcript.push(turn);
   if (transcript.length > MAX_TRANSCRIPT_TURNS) transcript.splice(0, transcript.length - MAX_TRANSCRIPT_TURNS);
   if (meetingMemory) meetingMemory.onTurn(turn);
@@ -174,16 +200,18 @@ function pushTranscript(turn) {
 
 function send(channel, data) { if (win && !win.isDestroyed()) win.webContents.send(channel, data); }
 
-function getWhisperRuntime() {
-  return locateWhisperRuntime({
-    isPackaged: app.isPackaged,
-    resourcesPath: process.resourcesPath,
-    appPath: app.getAppPath(),
-    platform: process.platform,
-    architecture: process.arch,
-    environment: process.env
-  });
-}
+const sessionContextService = createSessionContextService({
+  onChange: (value) => send('session-context:changed', value)
+});
+const whisperRuntimeService = createWhisperRuntimeService({ app, resourcesPath: process.resourcesPath });
+const getWhisperRuntime = () => whisperRuntimeService.locate();
+const clearSessionContext = () => sessionContextService.clear();
+const meetingHistoryService = createMeetingHistoryService({
+  getStore: () => meetingStore,
+  getCurrentMeeting: () => meetingMemory?.current || null,
+  isCapturing: () => state.capturing,
+  endCurrentMeeting: () => { if (meetingMemory) meetingMemory.end().catch(() => {}); }
+});
 
 function publishTranscript(channel, text) {
   if (!text || !text.trim()) return;
@@ -227,7 +255,10 @@ async function startLocalWhisper(settings) {
         sttDisabled = true;
         console.log('[local-whisper] error', error && error.message);
         send('stt:status', { provider: 'local', status: 'error' });
-        send('status', { message: `Local transcription error: ${error.message}. Audio was not sent to a cloud fallback.` });
+        send('status', {
+          message: `Ошибка локального распознавания: ${error.message}. Аудио не отправлялось в облако.`,
+          settingsTab: 'transcription'
+        });
       }
     });
 
@@ -366,19 +397,19 @@ function createWindow() {
       restoredTurns = [];
       send('transcript:restore', { turns });
       const ageMin = Math.max(1, Math.round((Date.now() - turns[turns.length - 1].ts) / 60000));
-      send('status', { message: `Resumed your meeting from ${ageMin} min ago (${turns.length} turns restored).` });
+      send('status', { message: `Встреча продолжена с момента ${ageMin} мин назад; восстановлено реплик: ${turns.length}.` });
     }
     // Warn about missing content protection on old Windows builds
     if (isWindows && shouldProtect && !WIN_SUPPORTS_CONTENT_PROTECTION) {
       send('status', {
-        message: `Heads up: your Windows version (build ${WIN_BUILD}) does not support screen-share hiding. Upgrade to Windows 10 build 19041+ or Windows 11 to enable invisibility in screen shares.`
+        message: `Ваша версия Windows (сборка ${WIN_BUILD}) не поддерживает скрытие при демонстрации экрана. Обновитесь до Windows 10 build 19041+ или Windows 11.`
       });
     }
     // Warn when protection was skipped because this is not a local console
     // session (RDP / Cloud PC / VM console) — see WIN_IS_LOCAL_CONSOLE_SESSION.
     if (isWindows && !process.env.M2A_NO_PROTECT && !WIN_IS_LOCAL_CONSOLE_SESSION) {
       send('status', {
-        message: 'Heads up: screen-share hiding is off for this session (remote desktop / cloud PC / VM sessions can render the window invisible to you as well when it is on). The window will be visible in screen shares here.'
+        message: 'Скрытие при демонстрации экрана выключено для удалённого рабочего стола, Cloud PC или виртуальной машины. Окно будет видно участникам демонстрации.'
       });
     }
   });
@@ -403,7 +434,13 @@ async function flushChannel(channel) {
     const settings = store.getSettings();
     const stt = createSTT(settings);
     if (!stt.available) {
-      if (!sttDisabled) { sttDisabled = true; send('status', { message: 'No transcription key set. Add an OpenAI (Whisper) or Groq key in Settings to enable listening. Screen/LeetCode features work without it.' }); }
+      if (!sttDisabled) {
+        sttDisabled = true;
+        send('status', {
+          message: 'Выбранный способ распознавания речи недоступен. Проверьте состояние Local Whisper или настройте OpenAI API/свой сервер.',
+          settingsTab: 'transcription'
+        });
+      }
       return;
     }
     const res = await stt.transcribe(pcm);
@@ -441,9 +478,15 @@ function handleSttError(err, settings) {
   const noAccess = err.status === 403 || err.status === 401 || err.code === 'model_not_found' || isQuota;
   sttDisabled = true; // stop hammering the API every few seconds
   if (noAccess) {
-    send('status', { message: `Transcription off: your ${err.provider} key was rejected or hit a quota limit. Update your key in Settings to resume.` });
+    send('status', {
+      message: `Распознавание выключено: ключ ${err.provider} отклонён или исчерпан лимит. Обновите ключ в настройках.`,
+      settingsTab: 'transcription'
+    });
   } else {
-    send('status', { message: 'Transcription error (' + err.provider + '): ' + err.message });
+    send('status', {
+      message: 'Ошибка распознавания (' + err.provider + '): ' + err.message,
+      settingsTab: 'transcription'
+    });
   }
 }
 
@@ -482,11 +525,11 @@ function initStreamingSTT() {
         const batchFallbackAvailable = createSTT(settings).available;
         stopStreamingSTT(); // close WebSockets and clear keep-alive intervals
         if (batchFallbackAvailable) {
-          send('status', { message: `Streaming transcription (${err.provider}) error: ${err.message}. Falling back to batch mode.` });
+          send('status', { message: `Ошибка потокового распознавания (${err.provider}): ${err.message}. Переключаюсь в пакетный режим.` });
           startFlushLoop();
         } else if (!sttDisabled) {
           sttDisabled = true;
-          send('status', { message: `Transcription stopped (${err.provider}): ${err.message}. The selected provider has no batch fallback.` });
+          send('status', { message: `Распознавание остановлено (${err.provider}): ${err.message}. Для выбранного провайдера нет резервного режима.` });
         }
         streamingMode = false;
       },
@@ -544,7 +587,7 @@ async function captureHashFrame() {
 async function captionSlide(imageDataUrl, transcriptSlice) {
   const settings = store.getSettings();
   const llm = createLLM(settings);
-  if (!llm.ready) throw new Error(llm.configurationError || 'Complete the provider settings.');
+  if (!llm.ready) throw new Error(llm.configurationError || 'Завершите настройку AI-провайдера.');
   let watchdog = null;
   const stalled = new Promise((_res, reject) => {
     watchdog = setTimeout(() => reject(new Error('slide caption timed out')), STREAM_INACTIVITY_MS);
@@ -609,7 +652,7 @@ async function pollSlides() {
     const msg = (e && e.message) || String(e);
     if (/429|quota|401|403|model_not_found/i.test(msg)) {
       slideDisabled = true;
-      send('status', { message: 'Slide captions paused: ' + msg });
+      send('status', { message: 'Описание слайдов приостановлено: ' + msg });
     } else {
       console.log('[slides] caption failed', msg);
     }
@@ -620,9 +663,8 @@ async function pollSlides() {
 
 function startSlideLoop() {
   stopSlideLoop();
-  const cfg = getSlidesConfig();
-  slideTimer = setInterval(() => { pollSlides().catch(() => {}); }, cfg.intervalMs);
-  if (slideTimer.unref) slideTimer.unref();
+  // Screen capture is manual-only: no background polling or automatic slide
+  // screenshots. The explicit "Снимок экрана" action is the sole entry point.
 }
 
 function stopSlideLoop() {
@@ -715,7 +757,12 @@ async function setCapturing(active) {
           return false;
         }
         send('stt:status', { provider: 'local', status: 'error' });
-        send('status', { message: `Local transcription could not start: ${error.message} No audio was sent to a cloud provider.` });
+        const runtime = getWhisperRuntime();
+        const model = settings.localWhisper?.modelId || 'large-v3';
+        const message = !runtime.available
+          ? `Модель ${model} установлена, но движок whisper.cpp отсутствует в сборке. Откройте вкладку «Аудио» и подготовьте локальный движок.`
+          : `Не удалось запустить локальное распознавание: ${error.message} Аудио не отправлялось в облако.`;
+        send('status', { message, settingsTab: 'transcription' });
         send('capture:state', { active: false, streaming: false, mode: 'local' });
         return false;
       }
@@ -747,9 +794,10 @@ async function setCapturing(active) {
     // Write/refresh the notes for this meeting in the background so the
     // summary survives even if m2a is closed before the meeting formally ends.
     meetingMemory.refreshNotes().then((notes) => {
-      if (notes) send('status', { message: `Meeting notes saved (${transcript.length} turns).` });
+      if (notes) send('status', { message: `Заметки встречи сохранены; реплик: ${transcript.length}.` });
     }).catch(() => {});
   }
+  clearSessionContext();
   stopSlideLoop();
   buffers.you = []; buffers.them = [];
   vad.you.reset(); vad.them.reset();
@@ -771,10 +819,16 @@ async function setCapturing(active) {
 }
 
 // -------- feature runner --------
-async function runFeature(mode, userText) {
-  if (state.busy) return;
+async function runFeature(mode, userText, excludedTranscriptIds = []) {
   const def = MODES[mode];
   if (!def) return;
+  if (activeFeature) {
+    activeFeature.controller.abort();
+    send('llm:done', { cancelled: true });
+  }
+  const request = { id: ++featureSequence, controller: new AbortController() };
+  activeFeature = request;
+  const isCurrent = () => activeFeature === request && !request.controller.signal.aborted;
   state.busy = true;
   let streamSettled = false; // drop stray tokens from a stream we've already abandoned
   try {
@@ -783,11 +837,12 @@ async function runFeature(mode, userText) {
     const userBubble = def.userBubble !== null
       ? def.userBubble
       : (mode === 'ask' ? userText : mode === 'answerThis' ? `"${(userText || '').slice(0, 60)}${userText && userText.length > 60 ? '…' : ''}"` : null);
-    const category = mode !== 'leetcode' ? detectCategory(transcript) : null;
+    const contextTranscript = selectTranscript(transcript, excludedTranscriptIds);
+    const category = mode !== 'leetcode' ? detectCategory(contextTranscript) : null;
     send('llm:start', { userBubble, small: !!def.small, category });
 
     if (!llm.ready) {
-      const message = llm.configurationError || ('Complete the ' + settings.provider + ' provider settings. Model: ' + (llm.model || 'unset') + '.');
+      const message = llm.configurationError || ('Завершите настройку провайдера ' + settings.provider + '. Модель: ' + (llm.model || 'не выбрана') + '.');
       if (settings.provider === publik.PUBLIK_PROVIDER) {
         // No key yet: either the disclosure was never accepted (open it — the
         // mint happens only on "Continue"), or the install was revoked or the
@@ -807,24 +862,28 @@ async function runFeature(mode, userText) {
     // right after provisioning; this gate catches a card that was never
     // acknowledged (e.g. an install provisioned by an earlier release).
     if (settings.provider === publik.PUBLIK_PROVIDER && settings.apiKeys.publik && !settings.publik.cardShown) {
-      send('llm:error', { message: 'publik API is set up. Take a look at the card, then ask again.', action: { kind: 'card' } });
+      send('llm:error', { message: 'publik API настроен. Просмотрите карточку и повторите запрос.', action: { kind: 'card' } });
       return;
     }
 
     let imageDataUrl = null;
     if (def.needsScreen) {
       try {
-        imageDataUrl = await captureScreenshot();
-        if (!imageDataUrl) throw new Error('No screen source was available.');
+        imageDataUrl = await captureScreenshot(settings.screenCapture && settings.screenCapture.displayId);
+        if (!isCurrent()) return;
+        if (!imageDataUrl) throw new Error('Не найден доступный экран.');
       }
       catch (e) {
         recordEvent({ level: 'error', event: 'screen_capture_failed', msg: e && e.message ? e.message : String(e), frame: 'captureScreenshot', context: { mode } });
+        await requestAndOpenScreenPermission();
         const message = process.platform === 'darwin'
-          ? 'Screen capture needs permission — grant Screen Recording to m2a in System Settings.'
+          ? 'Нужно разрешение на запись экрана. Системные настройки открыты — включите M2A и перезапустите приложение.'
           : process.platform === 'win32'
-            ? 'Screen capture failed. Make sure m2a is not blocked by Windows privacy or security software, then try again.'
-            : 'Screen capture failed. Check your desktop capture permissions, then try again.';
-        send('status', { message });
+            ? 'Не удалось захватить экран. Проверьте настройки конфиденциальности и защитное ПО Windows.'
+            : 'Не удалось захватить экран. Проверьте разрешения рабочего окружения.';
+        send('status', { message, settingsTab: 'appearance' });
+        send('llm:error', { message });
+        return;
       }
     }
 
@@ -832,22 +891,21 @@ async function runFeature(mode, userText) {
     // sent to the model anyway, it fabricates plausible generic output that
     // looks like a canned preset. Say so instead, and log how much context
     // every feature actually ran with.
-    console.log(`[llm] mode=${mode} transcriptTurns=${transcript.length} capturing=${state.capturing}`);
-    if (def.transcriptRequired && transcript.length === 0) {
-      send('llm:error', { message: state.capturing
-        ? 'Nothing has been transcribed yet — say something (or let the other side talk) and try again.'
-        : 'Nothing captured yet — press the listen button first so m2a can hear the conversation.' });
+    console.log(`[llm] mode=${mode} transcriptTurns=${contextTranscript.length}/${transcript.length} capturing=${state.capturing}`);
+    if (def.transcriptRequired && contextTranscript.length === 0) {
+      const hasTranscript = transcript.length > 0;
+      send('llm:error', { message: hasTranscript
+        ? 'Все блоки расшифровки исключены из контекста. Нажмите на нужные блоки в истории и повторите запрос.'
+        : state.capturing
+          ? 'Речь пока не распознана. Скажите что-нибудь или дождитесь реплики собеседника и повторите запрос.'
+          : 'Разговор ещё не записан. Нажмите «Начать сессию», чтобы M2A услышал встречу.' });
       return;
     }
 
     const settingsForPrompt = store.getSettings();
-    let contextBlock = buildInterviewContext(settingsForPrompt, mode, transcript);
-    // Summaries of the last few meetings, so "what did we agree last time?"
-    // has something to draw on. Never the current meeting, never leetcode.
-    const memoryBlock = mode !== 'leetcode' && meetingMemory ? meetingMemory.memoryBlock() : null;
-    if (memoryBlock) contextBlock = contextBlock ? contextBlock + '\n\n' + memoryBlock : memoryBlock;
+    let contextBlock = sessionContextService.buildPromptBlock();
     const system = def.buildSystem ? def.buildSystem(contextBlock, settingsForPrompt.aiRules || '') : (def.system || '');
-    const built = def.build({ transcript, userText: userText || '' });
+    const built = def.build({ transcript: contextTranscript, userText: userText || '' });
 
     // Watchdog: a provider that stalls mid-stream would otherwise hang the await forever,
     // leaving state.busy = true and wedging every later question until an app restart.
@@ -861,33 +919,45 @@ async function runFeature(mode, userText) {
       };
       rearm();
     });
+    const cancelled = new Promise((_res, reject) => {
+      request.controller.signal.addEventListener('abort', () => {
+        reject(Object.assign(new Error('Запрос отменён.'), { name: 'AbortError' }));
+      }, { once: true });
+    });
     try {
       await Promise.race([
         llm.stream({
           system,
           turns: [{ role: 'user', text: built }],
           imageDataUrl,
-          onToken: (t) => { if (streamSettled) return; rearm(); send('llm:token', { text: t }); },
+          signal: request.controller.signal,
+          onToken: (t) => { if (streamSettled || !isCurrent()) return; rearm(); send('llm:token', { text: t }); },
           onResponse: settings.provider === publik.PUBLIK_PROVIDER ? (res) => publikNoteHeaders(res && res.headers) : undefined
         }),
-        stalled
+        stalled,
+        cancelled
       ]);
     } finally {
       streamSettled = true;
       clearTimeout(watchdog);
     }
+    if (!isCurrent()) return;
     send('llm:done', {});
     // Streams settle after their headers, so the charge is reconciled from
     // GET /wallet shortly after the answer — one request per answer, debounced.
     if (settings.provider === publik.PUBLIK_PROVIDER) publikScheduleWalletRefresh();
   } catch (e) {
+    if (!isCurrent() || (e && e.name === 'AbortError')) return;
     recordEvent({ level: 'error', event: 'llm_failed', msg: e && e.message ? e.message : String(e), frame: 'runFeature', context: { mode, provider: store.getSettings().provider } });
     const action = e && e.action ? e.action : null;
     send('llm:error', { message: e && e.message ? e.message : String(e), action });
     if (action) publikHandleErrorAction(action);
   } finally {
     streamSettled = true;
-    state.busy = false;
+    if (activeFeature === request) {
+      activeFeature = null;
+      state.busy = false;
+    }
   }
 }
 
@@ -896,6 +966,16 @@ async function runFeature(mode, userText) {
 // renderer, and the renderer's whole-object Save can never clobber it.
 ipcMain.handle('settings:get', () => store.redactForRenderer(store.getSettings()));
 ipcMain.handle('cli-providers:status', () => getCliProviderStatus());
+ipcMain.handle('screen:list', () => {
+  const primaryId = String(screen.getPrimaryDisplay().id);
+  return screen.getAllDisplays().map((display, index) => ({
+    id: String(display.id),
+    label: display.label || `Экран ${index + 1}`,
+    width: display.size.width,
+    height: display.size.height,
+    primary: String(display.id) === primaryId
+  }));
+});
 ipcMain.handle('settings:set', (_e, patch) => {
   sttDisabled = false;
   const next = store.setSettings(store.stripRendererPatch(patch));
@@ -1088,6 +1168,11 @@ ipcMain.handle('capture:toggle', () => {
 });
 ipcMain.handle('capture:state', () => ({ active: state.capturing }));
 ipcMain.handle('whisper:models', () => getWhisperOverview());
+registerWhisperRuntimeIpc({
+  ipcMain,
+  service: whisperRuntimeService,
+  onPrepared: () => send('whisper:models-changed', { runtime: true })
+});
 ipcMain.handle('whisper:model-download', async (_event, modelId) => {
   if (!whisperModelManager) throw new Error('The local Whisper model manager is not ready.');
   const result = await whisperModelManager.download(modelId, (progress) => send('whisper:download-progress', progress));
@@ -1132,6 +1217,7 @@ ipcMain.handle('transcript:clear', () => {
   if (meetingMemory) meetingMemory.end().catch(() => {}); // it stays in history with its notes
   transcript.splice(0, transcript.length);
   resetSlidesSession();
+  clearSessionContext();
   send('slides:update', { count: 0, last: null });
   return { ok: true };
 });
@@ -1147,7 +1233,7 @@ ipcMain.handle('slides:clear', () => {
   send('slides:update', { count: 0, last: null });
   return { ok: true };
 });
-ipcMain.on('ask', (_e, payload) => runFeature(payload.mode, payload.text));
+ipcMain.on('ask', (_e, payload = {}) => runFeature(payload.mode, payload.text, payload.excludedTranscriptIds));
 ipcMain.on('mic:pcm', (_e, arrayBuffer) => { if (state.capturing) routeAudio('you', arrayBuffer); });
 ipcMain.on('system:pcm', (_e, arrayBuffer) => { if (state.capturing) routeAudio('them', arrayBuffer); });
 ipcMain.on('mouse:ignore', (_e, v) => { if (win) win.setIgnoreMouseEvents(!!v, { forward: true }); });
@@ -1179,30 +1265,14 @@ function stopWindowDrag() {
 ipcMain.on('open-pane', (_e, url) => { shell.openExternal(url).catch(() => {}); });
 ipcMain.on('app:quit', () => app.quit());
 ipcMain.on('log', (_e, msg) => console.log('[renderer]', msg));
-// -------- resume / job-description file import --------
-// The dialog runs in MAIN and is filtered to pdf/docx; the renderer never supplies a path.
-// The parsed text is RETURNED to the renderer, which drops it into the existing
-// #resume-text / #job-description textareas so settings keep a single source of truth.
-async function pickAndParseDocument() {
-  const res = await dialog.showOpenDialog(win, {
-    properties: ['openFile'],
-    filters: [{ name: 'Resume / Job description', extensions: ['pdf', 'docx'] }]
-  });
-  if (res.canceled || !res.filePaths.length) return null;
-  const filePath = res.filePaths[0];
-  const text = await parseDocumentFile(filePath);
-  return { fileName: path.basename(filePath), text };
-}
-ipcMain.handle('profile:pickDocument', async () => {
-  try {
-    const picked = await pickAndParseDocument();
-    if (!picked) return { canceled: true };
-    return { canceled: false, fileName: picked.fileName, text: picked.text };
-  } catch (e) {
-    return { canceled: false, error: (e && e.message) || String(e) };
-  }
+registerSessionContextIpc({
+  ipcMain,
+  dialog,
+  getWindow: () => win,
+  service: sessionContextService,
+  parseDocumentFile
 });
-ipcMain.on('app:quit', () => app.quit());
+registerMeetingHistoryIpc({ ipcMain, service: meetingHistoryService });
 ipcMain.handle('applink:state', () => appLinkConsentState());
 ipcMain.handle('applink:revoke', (_e, callerId) => {
   // Forgetting a caller also clears its separate slide-caption consent decision,
@@ -1227,7 +1297,7 @@ ipcMain.on('permissions:continue', async () => {
 function registerShortcuts() {
   shortcutState.say = globalShortcut.register('CommandOrControl+Return', () => runFeature('say', ''));
   shortcutState.assist = globalShortcut.register('CommandOrControl+Shift+Return', () => runFeature('assist', ''));
-  shortcutState.leetcode = globalShortcut.register('CommandOrControl+H', () => runFeature('leetcode', ''));
+  shortcutState.leetcode = globalShortcut.register('CommandOrControl+H', () => runFeature('screen', ''));
   shortcutState.hide = globalShortcut.register('CommandOrControl+Shift+/', () => send('hide:toggle', {}));
   shortcutState.quit = globalShortcut.register('CommandOrControl+Shift+X', () => app.quit());
   for (const [name, wasRegistered] of Object.entries(shortcutState)) {
@@ -1278,7 +1348,7 @@ async function getPermissionStatus() {
   return { mic: 'granted', screen: 'granted' };
 }
 
-async function requestPermissions() {
+async function requestPermissions({ includeScreen = true } = {}) {
   if (process.env.M2A_SMOKE_TEST === '1') return true;
   if (process.platform !== 'darwin' && process.platform !== 'win32') return true;
 
@@ -1292,15 +1362,20 @@ async function requestPermissions() {
     // Trigger the macOS screen-recording permission dialog (first-use only).
     // There is no askForMediaAccess('screen'), but attempting to enumerate
     // sources via desktopCapturer will cause macOS to prompt the user.
-    const screenStatus = await verifyScreenAccess();
-    if (screenStatus !== 'granted') {
-      try { await desktopCapturer.getSources({ types: ['screen'] }); } catch (_) {}
+    if (includeScreen) {
+      const screenStatus = await verifyScreenAccess();
+      if (screenStatus !== 'granted') {
+        try { await desktopCapturer.getSources({ types: ['screen'] }); } catch (_) {}
+      }
     }
   }
   // Windows has no OS-level "ask" dialog (systemPreferences.askForMediaAccess is
   // macOS-only) — mic access is governed entirely by the Settings toggle the user
   // flips themselves, which getPermissionStatus() below reads directly.
 
+  if (!includeScreen) {
+    return systemPreferences.getMediaAccessStatus('microphone') === 'granted';
+  }
   const status = await getPermissionStatus();
   return status.mic === 'granted' && status.screen === 'granted';
 }
@@ -1347,21 +1422,20 @@ function launchApp() {
 
   if (isMac && app.dock) app.dock.hide();
 
-  // Before the app-link snapshot and before the window exists, so a first run
-  // boots with provider 'publik'. Runs once per settings file and never moves
-  // a user who has a working key. No network call happens here.
-  if (store.applyPublikDefault(publikBuild)) {
-    recordEvent({ level: 'info', event: 'publik_default_applied', msg: '', frame: 'launchApp', context: {} });
-  }
+  // The streamlined provider list defaults to the signed-in Codex CLI.
 
   whisperModelManager = new WhisperModelManager({ userDataPath: app.getPath('userData') });
 
+  meetingStore = createMeetingStore({ file: path.join(app.getPath('userData'), 'meetings.json'), debounceMs: 1500 });
   meetingMemory = createMeetingMemory({
-    store: createMeetingStore({ file: path.join(app.getPath('userData'), 'meetings.json'), debounceMs: 1500 }),
+    store: meetingStore,
     llmFactory: () => createLLM(store.getSettings()),
     log: (msg) => console.log('[meetings]', msg)
   });
-  restoredTurns = meetingMemory.resumeOpen();
+  restoredTurns = meetingMemory.resumeOpen().map((turn) => {
+    if (!turn.id) turn.id = `${Number(turn.ts) || Date.now()}-${++transcriptSequence}`;
+    return turn;
+  });
   if (restoredTurns.length) transcript.push(...restoredTurns.slice(-MAX_TRANSCRIPT_TURNS));
   meetingMemory.catchUp().then((n) => { if (n) console.log(`[meetings] wrote notes for ${n} earlier meeting(s)`); }).catch(() => {});
 
@@ -1436,13 +1510,10 @@ app.whenReady().then(async () => {
   }
 
   if (isMac) {
-    const allGranted = await requestPermissions();
-    if (!allGranted) {
-      // Show the permissions gate — the dock stays visible so the user can find the app
-      createPermissionsWindow();
-      app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createPermissionsWindow(); });
-      return;
-    }
+    // Screen permission is deliberately lazy: startup asks only for the
+    // microphone. macOS sees a screen-capture request only after the user
+    // presses the explicit screenshot button (or opts into meeting audio).
+    await requestPermissions({ includeScreen: false });
   } else if (isWindows) {
     // Windows has no OS-level modal permission dialog to block startup on —
     // there is no askForMediaAccess() equivalent, and the only way to change
@@ -1451,10 +1522,7 @@ app.whenReady().then(async () => {
     // gate as an informational window alongside the app instead of leaving
     // the user with no option at all to see or act on the permission state
     // ("not able to give permission ... coz there is no option").
-    const allGranted = await requestPermissions();
-    if (!allGranted) {
-      createPermissionsWindow();
-    }
+    await requestPermissions({ includeScreen: false });
   }
 
   launchApp();

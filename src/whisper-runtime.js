@@ -7,6 +7,7 @@ function locateWhisperRuntime({
   isPackaged,
   resourcesPath,
   appPath,
+  userDataPath,
   platform = process.platform,
   architecture = process.arch,
   environment = process.env
@@ -16,6 +17,9 @@ function locateWhisperRuntime({
 
   if (environment.M2A_WHISPER_RUNTIME) {
     candidates.push(path.resolve(environment.M2A_WHISPER_RUNTIME));
+  }
+  if (userDataPath) {
+    candidates.push(path.join(userDataPath, 'whisper-runtime'));
   }
   if (isPackaged && resourcesPath) {
     candidates.push(path.join(resourcesPath, 'whisper-runtime'));

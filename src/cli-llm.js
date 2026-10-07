@@ -47,8 +47,15 @@ function subscriptionEnv(provider) {
   return env;
 }
 
-function runChild(command, args, { cwd, input = '', env, timeoutMs = CLI_TIMEOUT_MS } = {}) {
+function abortError() {
+  const error = new Error('Запрос отменён.');
+  error.name = 'AbortError';
+  return error;
+}
+
+function runChild(command, args, { cwd, input = '', env, timeoutMs = CLI_TIMEOUT_MS, signal } = {}) {
   return new Promise((resolve, reject) => {
+    if (signal && signal.aborted) return reject(abortError());
     const child = spawn(command, args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
@@ -64,8 +71,14 @@ function runChild(command, args, { cwd, input = '', env, timeoutMs = CLI_TIMEOUT
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      if (signal) signal.removeEventListener('abort', onAbort);
       if (error) reject(error); else resolve(result);
     }
+    function onAbort() {
+      child.kill('SIGTERM');
+      finish(abortError());
+    }
+    if (signal) signal.addEventListener('abort', onAbort, { once: true });
     child.on('error', (error) => finish(error));
     child.on('close', (code, signal) => finish(null, { code, signal, stdout, stderr }));
     child.stdin.on('error', () => {});
@@ -104,7 +117,7 @@ function cliFailure(label, result) {
   return new Error(`${label} завершился с ошибкой${result.code == null ? '' : ` (код ${result.code})`}.${detail ? ` ${detail}` : ''}`);
 }
 
-async function streamCodexSubscription({ system, turns, imageDataUrl, model, onToken = () => {} }) {
+async function streamCodexSubscription({ system, turns, imageDataUrl, model, onToken = () => {}, signal }) {
   const command = findExecutable('codex');
   if (!command) throw new Error('Codex CLI не найден. Установите Codex и выполните codex login.');
   return withTempDir(async (dir) => {
@@ -114,7 +127,7 @@ async function streamCodexSubscription({ system, turns, imageDataUrl, model, onT
     if (model) args.push('--model', model);
     if (screenshotPath) args.push('-i', screenshotPath);
     args.push('-');
-    const result = await runChild(command, args, { cwd: dir, input: promptFromTurns(system, turns), env: subscriptionEnv('codex') });
+    const result = await runChild(command, args, { cwd: dir, input: promptFromTurns(system, turns), env: subscriptionEnv('codex'), signal });
     if (result.code !== 0) throw cliFailure('Codex CLI', result);
     const answer = (fs.existsSync(outputFile) ? fs.readFileSync(outputFile, 'utf8') : result.stdout).trim();
     if (!answer) throw new Error('Codex CLI вернул пустой ответ.');
@@ -123,14 +136,14 @@ async function streamCodexSubscription({ system, turns, imageDataUrl, model, onT
   });
 }
 
-async function streamClaudeSubscription({ system, turns, imageDataUrl, model, onToken = () => {} }) {
+async function streamClaudeSubscription({ system, turns, imageDataUrl, model, onToken = () => {}, signal }) {
   const command = findExecutable('claude');
   if (!command) throw new Error('Claude Code CLI не найден. Установите Claude Code и выполните claude login.');
   return withTempDir(async (dir) => {
     const screenshotPath = writeScreenshot(dir, imageDataUrl);
     const args = ['-p', '--output-format', 'text', '--no-session-persistence', '--disable-slash-commands', '--permission-mode', 'dontAsk', '--tools', screenshotPath ? 'Read' : ''];
     if (model) args.push('--model', model);
-    const result = await runChild(command, args, { cwd: dir, input: promptFromTurns(system || 'Отвечай по-русски.', turns, screenshotPath), env: subscriptionEnv('claudeCode') });
+    const result = await runChild(command, args, { cwd: dir, input: promptFromTurns(system || 'Отвечай по-русски.', turns, screenshotPath), env: subscriptionEnv('claudeCode'), signal });
     if (result.code !== 0) throw cliFailure('Claude Code', result);
     const answer = result.stdout.trim();
     if (!answer) throw new Error('Claude Code вернул пустой ответ.');
@@ -166,6 +179,7 @@ async function getCliProviderStatus() {
 module.exports = {
   findExecutable,
   getCliProviderStatus,
+  runChild,
   streamCodexSubscription,
   streamClaudeSubscription
 };

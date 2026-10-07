@@ -59,11 +59,11 @@ html, body {
   pointer-events: none;                  /* only the actual UI blocks; gaps pass through */
   opacity: var(--m2a-opacity, 1);
 }
-#settings-scrim, #onboard-scrim, #consent-scrim {
+#settings-scrim, #context-scrim, #meetings-scrim, #onboard-scrim, #consent-scrim {
   opacity: var(--m2a-opacity, 1);
 }
 #app.opacity-open { padding-top: 82px; }
-#toolbar, #panel-wrap, #settings-scrim, #onboard-scrim, #consent-scrim { pointer-events: auto; }
+#toolbar, #panel-wrap, #settings-scrim, #context-scrim, #meetings-scrim, #onboard-scrim, #consent-scrim { pointer-events: auto; }
 /* #app is a flex column: without this the toolbar is a shrinkable flex item, so
    a tall panel (long transcript, long response) squeezes the Stop/Hide/Quit
    controls down to nothing and leaves no way to stop listening. */
@@ -484,13 +484,42 @@ button:focus { outline: none; }
 #send-btn.busy { opacity: 0.6; pointer-events: none; }
 
 /* ============================ Settings ============================ */
-#settings-scrim {
+#settings-scrim, #context-scrim, #meetings-scrim {
   position: fixed; inset: 0; z-index: 20;
   display: grid; place-items: center;
   background: rgba(0,0,0,0.35); backdrop-filter: blur(4px);
 }
-#settings-scrim.hidden { display: none; }
+#settings-scrim.hidden, #context-scrim.hidden, #meetings-scrim.hidden { display: none; }
 #settings { width: min(480px, 94vw); padding: 18px 20px 20px; max-height: 88vh; display: flex; flex-direction: column; }
+#session-context-panel { width: min(520px, 94vw); padding: 18px 20px 20px; max-height: 88vh; display: flex; flex-direction: column; }
+#meetings-panel { width: min(650px, 96vw); height: min(610px, 90vh); padding: 18px 20px 20px; display: flex; flex-direction: column; }
+.meetings-search-row { margin-bottom: 10px; }
+.meetings-search-row input { width: 100%; padding: 9px 11px; border-radius: var(--r-8); border: 1px solid rgba(255,255,255,0.14); background: rgba(0,0,0,0.25); color: var(--tx-1); font: 13px var(--font); outline: none; }
+.meetings-search-row input:focus { border-color: var(--accent); }
+.meetings-layout { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 12px; min-height: 0; flex: 1; }
+.meetings-list, .meeting-detail { min-height: 0; overflow-y: auto; border: 1px solid rgba(255,255,255,0.10); border-radius: 12px; background: rgba(0,0,0,0.16); }
+.meetings-list { padding: 6px; display: flex; flex-direction: column; gap: 5px; }
+.meeting-list-item { width: 100%; border: 1px solid transparent; border-radius: 9px; padding: 9px; background: transparent; color: var(--tx-2); text-align: left; cursor: pointer; font-family: var(--font); }
+.meeting-list-item:hover { background: rgba(255,255,255,0.06); }
+.meeting-list-item.selected { border-color: rgba(60,131,245,0.42); background: rgba(60,131,245,0.13); }
+.meeting-list-item strong, .meeting-list-item span { display: block; }
+.meeting-list-item strong { font-size: 12px; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.meeting-list-item span { margin-top: 4px; color: var(--tx-mut); font-size: 10px; line-height: 1.35; }
+.meeting-detail { padding: 14px 16px; -webkit-user-select: text; user-select: text; }
+.meeting-detail-head { display: flex; align-items: flex-start; gap: 10px; padding-bottom: 12px; border-bottom: 1px solid var(--bd-hair); }
+.meeting-detail-head > div { flex: 1; min-width: 0; }
+.meeting-detail h2 { margin: 0; color: var(--tx-1); font-size: 17px; line-height: 1.3; }
+.meeting-meta { margin-top: 5px; color: var(--tx-mut); font-size: 10.5px; }
+.meeting-section { margin-top: 14px; }
+.meeting-section h3 { margin: 0 0 6px; color: #9dc0ff; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+.meeting-section p, .meeting-section li { margin: 0; color: var(--tx-2); font-size: 12.5px; line-height: 1.5; white-space: pre-wrap; }
+.meeting-section ul { margin: 0; padding-left: 18px; }
+.meeting-turn { padding: 8px 9px; margin-top: 5px; border-radius: 8px; background: rgba(255,255,255,0.04); }
+.meeting-turn-you { background: rgba(60,131,245,0.08); }
+.meeting-turn span { display: block; margin-bottom: 3px; color: var(--tx-mut); font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+.meeting-turn p { color: var(--tx-2); }
+.meetings-empty { padding: 18px 10px; color: var(--tx-mut); font-size: 12px; text-align: center; }
+.session-context-body { overflow-y: auto; min-height: 0; }
 .s-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; flex-shrink: 0; }
 .s-title { font-size: 17px; font-weight: 600; color: var(--tx-1); }
 .s-close { border: none; background: var(--accent); color: #fff; font-weight: 600; font-size: 13px; padding: 6px 14px; border-radius: var(--r-pill); cursor: pointer; }
@@ -555,15 +584,36 @@ button:focus { outline: none; }
 .s-action:hover:not(:disabled) { color: #fff; background: rgba(255,255,255,0.09); }
 .s-action:disabled { opacity: 0.4; cursor: default; }
 .s-action.danger:hover:not(:disabled) { color: #fca5a5; border-color: rgba(239,68,68,0.35); background: rgba(239,68,68,0.08); }
+.context-wide-field input { width: 100%; }
+.context-url-row { display: flex; align-items: center; gap: 7px; }
+.context-url-row input {
+  flex: 1; min-width: 0; padding: 8px 10px; border-radius: var(--r-8);
+  border: 1px solid rgba(255,255,255,0.14); background: rgba(0,0,0,0.25);
+  color: var(--tx-1); font: 13px var(--font); outline: none;
+}
+.context-url-row input:focus { border-color: var(--accent); }
+.context-source-list { display: flex; flex-direction: column; gap: 6px; }
+.context-source-list:empty::after { content: 'Пока ничего не добавлено'; color: var(--tx-mut); font-size: 11px; }
+.context-source {
+  display: flex; align-items: center; gap: 8px; padding: 7px 9px;
+  border: 1px solid rgba(255,255,255,0.10); border-radius: var(--r-8);
+  background: rgba(255,255,255,0.03); color: var(--tx-2); font-size: 11.5px;
+}
+.context-source-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.context-source-size { color: var(--tx-mut); white-space: nowrap; }
+.context-source-remove { border: 0; background: transparent; color: var(--tx-mut); cursor: pointer; font-size: 16px; line-height: 1; }
+.context-source-remove:hover { color: #fca5a5; }
+.context-footer { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.context-footer .s-status { flex: 1; margin: 0; }
 /* Textareas inside settings */
-#settings textarea {
+#settings textarea, #session-context-panel textarea {
   width: 100%; padding: 8px 10px; border-radius: var(--r-8);
   border: 1px solid rgba(255,255,255,0.14); background: rgba(0,0,0,0.25);
   color: var(--tx-1); font-size: 12.5px; font-family: var(--font);
   resize: vertical; outline: none; line-height: 1.5;
   -webkit-user-select: text; user-select: text;
 }
-#settings textarea:focus { border-color: var(--accent); }
+#settings textarea:focus, #session-context-panel textarea:focus { border-color: var(--accent); }
 .s-callers { display: flex; flex-direction: column; gap: 6px; }
 .s-caller { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--tx-2); }
 .s-caller span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -707,6 +757,14 @@ button:focus { outline: none; }
   color: var(--tx-2); 
   flex: 1; 
 }
+.ts-title small {
+  display: block;
+  margin-top: 2px;
+  color: var(--tx-mut);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
 .ts-close-btn {
   width: 20px; height: 20px;
   border: none; background: transparent;
@@ -742,8 +800,20 @@ button:focus { outline: none; }
   line-height: 1.45;
   -webkit-user-select: text;
   user-select: text;
-  transition: background 120ms ease;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, opacity 120ms ease;
 }
+.ts-turn.ts-included {
+  border-color: rgba(112, 180, 255, 0.38);
+  box-shadow: inset 0 0 0 1px rgba(112, 180, 255, 0.08);
+}
+.ts-turn.ts-excluded {
+  background: transparent;
+  border-color: transparent;
+  opacity: 0.42;
+}
+.ts-turn:focus-visible { outline: 2px solid rgba(112, 180, 255, 0.7); outline-offset: 1px; }
 .ts-turn.ts-you {
   color: rgba(160,210,255,0.9);
   background: rgba(160,210,255,0.06);
@@ -882,7 +952,7 @@ button:focus { outline: none; }
 #consent-scrim { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; background: rgba(0,0,0,0.5); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
 /* Keep full-window overlays over the main column, not the sidebar strips. Declared after
    each overlay's `inset: 0` so it wins. */
-#settings-scrim, #onboard-scrim, #consent-scrim { left: var(--side-w); right: auto; width: var(--main-w); }
+#settings-scrim, #context-scrim, #meetings-scrim, #onboard-scrim, #consent-scrim { left: var(--side-w); right: auto; width: var(--main-w); }
 #consent-scrim.hidden { display: none; }
 #consent { width: min(430px, 92vw); padding: 24px 26px 16px; text-align: center; animation: overlayIn 240ms cubic-bezier(0.22,1,0.36,1); }
 .cs-title { font-size: 15px; font-weight: 620; color: var(--tx-1); line-height: 1.35; }

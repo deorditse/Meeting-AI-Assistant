@@ -1,15 +1,18 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const Module = require('node:module');
+const fs = require('node:fs');
+const path = require('node:path');
 
 // screen.js requires electron at load time; stub it the way llm.test.js stubs
 // the openai SDK so the encoder can be exercised without a display.
 const originalModuleLoad = Module._load;
+const fakeElectron = { desktopCapturer: {}, screen: {} };
 Module._load = function loadWithElectronStub(request, parent, isMain) {
-  if (request === 'electron') return { desktopCapturer: {}, screen: {} };
+  if (request === 'electron') return fakeElectron;
   return originalModuleLoad.call(this, request, parent, isMain);
 };
-const { encodeScreenshot, MAX_LONG_EDGE_PX, JPEG_QUALITY, MAX_DATA_URL_BYTES } = require('../src/screen');
+const { encodeScreenshot, resolveDisplay, MAX_LONG_EDGE_PX, JPEG_QUALITY, MAX_DATA_URL_BYTES } = require('../src/screen');
 Module._load = originalModuleLoad;
 
 // A stand-in for Electron's NativeImage. The JPEG size is modelled as a fixed
@@ -62,4 +65,22 @@ test('a small capture is never upscaled', () => {
   const log = [];
   encodeScreenshot(fakeImage(1280, 800, log));
   assert.deepEqual(log, [{ toJPEG: JPEG_QUALITY }]);
+});
+
+test('screen selection follows the cursor by default and honours an explicit display id', () => {
+  const displays = [{ id: 10 }, { id: 20 }];
+  fakeElectron.screen.getAllDisplays = () => displays;
+  fakeElectron.screen.getCursorScreenPoint = () => ({ x: 2000, y: 100 });
+  fakeElectron.screen.getDisplayNearestPoint = () => displays[1];
+  fakeElectron.screen.getPrimaryDisplay = () => displays[0];
+
+  assert.deepEqual(resolveDisplay('cursor'), { display: displays[1], displayNumber: 2 });
+  assert.deepEqual(resolveDisplay('10'), { display: displays[0], displayNumber: 1 });
+});
+
+test('macOS capture asks Electron first so permission belongs to the M2A bundle', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src/screen.js'), 'utf8');
+  const start = src.indexOf('async function captureScreenshot');
+  const body = src.slice(start, src.indexOf('\n}\n\nmodule.exports', start));
+  assert.ok(body.indexOf('desktopCapturer.getSources') < body.indexOf('captureMacNative'), 'Electron capture must precede the native utility fallback');
 });

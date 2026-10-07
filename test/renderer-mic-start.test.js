@@ -19,3 +19,14 @@ test('capture:state handler starts the mic exactly once and startMic is re-entra
   assert.match(src, /const gen = \+\+micGen;[\s\S]*?if \(gen !== micGen \|\| micStream\)/, 'startMic must drop a superseded getUserMedia result');
   assert.match(src, /function stopMic\(\) \{\s*micGen\+\+;/, 'stopMic must invalidate an in-flight startMic');
 });
+
+test('meeting audio starts only after the STT backend reports ready', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'frontend/src/pages/MeetingAssistant/model/mountMeetingAssistant.js'), 'utf8');
+  const start = src.indexOf("$('#stop-btn').addEventListener");
+  const end = src.indexOf('// Transcript toggle removed', start);
+  const handler = src.slice(start, end);
+  const toggleAt = handler.indexOf('await m2a.captureToggle()');
+  const systemAudioAt = handler.indexOf('await startSystemAudio()');
+  assert.ok(toggleAt > -1 && systemAudioAt > toggleAt, 'the backend readiness check must precede system-audio capture');
+  assert.match(handler, /turningOn && active/);
+});

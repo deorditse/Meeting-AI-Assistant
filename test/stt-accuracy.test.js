@@ -1,12 +1,18 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { looksLikeHallucination, buildVocabPrompt } = require('../src/stt');
+const { cleanTranscript, looksLikeHallucination, buildVocabPrompt } = require('../src/stt');
 const { DeepgramStreamingSTT } = require('../src/stt-streaming');
 
 test('looksLikeHallucination drops Whisper silence artifacts', () => {
-  ['', '   ', 'Thank you for watching.', 'thanks for watching', 'Bye-bye!', '👍👍'].forEach((s) => {
+  ['', '   ', 'Thank you for watching.', 'thanks for watching', 'Bye-bye!', '👍👍',
+    'Спасибо.', 'Продолжение следует...', 'Пока!'].forEach((s) => {
     assert.equal(looksLikeHallucination(s), true, JSON.stringify(s));
   });
+});
+
+test('cleanTranscript removes Russian silence artifacts but keeps a real sentence', () => {
+  assert.equal(cleanTranscript('Почему ты не запускаешь распознавание? Спасибо. Продолжение следует.'), 'Почему ты не запускаешь распознавание?');
+  assert.equal(cleanTranscript('Как работает Kubernetes? Как работает Kubernetes?'), 'Как работает Kubernetes?');
 });
 
 test('looksLikeHallucination keeps real speech', () => {
@@ -15,13 +21,13 @@ test('looksLikeHallucination keeps real speech', () => {
   });
 });
 
-test('buildVocabPrompt seeds base vocab and resume proper nouns, capped', () => {
-  const p = buildVocabPrompt({ resumeText: 'Optum EKS Terraform', jobDescription: 'AWS SRE' });
+test('buildVocabPrompt seeds base vocab and explicit session vocabulary, capped', () => {
+  const p = buildVocabPrompt({ sttVocabulary: 'Optum EKS Terraform AWS SRE' });
   assert.ok(p.includes('Kubernetes'));
   assert.ok(p.includes('Optum'));
   assert.ok(p.length <= 850);
   assert.ok(buildVocabPrompt(undefined).length > 0);
-  assert.ok(buildVocabPrompt({ resumeText: 'Xyzzy '.repeat(4000) }).length <= 850);
+  assert.ok(buildVocabPrompt({ sttVocabulary: 'Xyzzy '.repeat(4000) }).length <= 850);
 });
 
 test('Deepgram accumulates is_final segments into one turn at speech_final', () => {

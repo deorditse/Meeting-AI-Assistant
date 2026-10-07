@@ -13,6 +13,7 @@ const {
   getRuntimeTarget,
   getRuntimeExecutablePath
 } = require('../src/whisper-runtime-manifest');
+const { resolveCMakeExecutable } = require('../src/infrastructure/local-toolchain');
 
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 const DEFAULT_CACHE_ROOT = path.join(PROJECT_ROOT, '.cache', 'whisper-runtime');
@@ -168,7 +169,9 @@ async function extractTarWithMaterializedLinks(archivePath, extractionDirectory)
 }
 
 function runCMake(argumentsList, workingDirectory) {
-  execFileSync('cmake', argumentsList, {
+  const executable = resolveCMakeExecutable();
+  if (!executable) throw new Error('CMake is required to build whisper.cpp on macOS.');
+  execFileSync(executable, argumentsList, {
     cwd: workingDirectory,
     env: process.env,
     stdio: 'inherit',
@@ -273,9 +276,11 @@ async function prepareWhisperRuntime({
 
 async function main() {
   const outputDirectory = readArgument('output');
+  const cacheRoot = readArgument('cache-root');
   const runtimeDirectory = await prepareWhisperRuntime({
     platform: readArgument('platform') || process.platform,
     architecture: readArgument('arch') || process.arch,
+    cacheRoot: cacheRoot ? path.resolve(cacheRoot) : DEFAULT_CACHE_ROOT,
     outputDirectory: outputDirectory ? path.resolve(outputDirectory) : null
   });
   process.stdout.write(`Prepared whisper.cpp ${WHISPER_CPP_VERSION} runtime at ${runtimeDirectory}\n`);

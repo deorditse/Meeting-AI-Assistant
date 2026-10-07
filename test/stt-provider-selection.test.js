@@ -27,7 +27,8 @@ test('explicit local mode never constructs a cloud fallback', () => {
 test('explicit cloud selection does not cross-fallback to another provider', () => {
   const openai = createSTT({
     sttProvider: 'openai',
-    apiKeys: { openai: 'openai-key', gemini: 'gemini-key' }
+    sttApiKeys: { openai: 'speech-openai-key' },
+    apiKeys: { openai: 'chat-openai-key', gemini: 'gemini-key' }
   });
   const gemini = createSTT({
     sttProvider: 'gemini',
@@ -40,8 +41,8 @@ test('explicit cloud selection does not cross-fallback to another provider', () 
 test('explicit Custom selection with a base URL and key is offered and usable for STT', () => {
   const settings = {
     sttProvider: 'custom',
-    baseUrl: 'http://127.0.0.1:18789/v1',
-    apiKeys: { custom: 'test-custom-key' }
+    sttBaseUrl: 'http://127.0.0.1:18789/v1',
+    sttApiKeys: { custom: 'test-custom-key' }
   };
   const batch = createSTT(settings);
   assert.equal(batch.available, true);
@@ -54,8 +55,8 @@ test('explicit Custom selection with a base URL and key is offered and usable fo
 });
 
 test('explicit Custom selection without both a base URL and a key stays unavailable (no silent partial send)', () => {
-  assert.equal(createSTT({ sttProvider: 'custom', apiKeys: { custom: 'test-custom-key' } }).available, false);
-  assert.equal(createSTT({ sttProvider: 'custom', baseUrl: 'http://127.0.0.1:18789/v1', apiKeys: {} }).available, false);
+  assert.equal(createSTT({ sttProvider: 'custom', sttApiKeys: { custom: 'test-custom-key' } }).available, false);
+  assert.equal(createSTT({ sttProvider: 'custom', sttBaseUrl: 'http://127.0.0.1:18789/v1', sttApiKeys: {} }).available, false);
 });
 
 test('auto mode still never reaches for the Custom chat key for STT (unchanged from before)', () => {
@@ -66,6 +67,25 @@ test('auto mode still never reaches for the Custom chat key for STT (unchanged f
   });
   assert.equal(speechToText.available, false);
   assert.deepEqual(speechToText.providers, []);
+});
+
+test('explicit OpenAI speech never reuses the OpenAI chat key', () => {
+  const chatOnly = createSTT({
+    provider: 'openai',
+    sttProvider: 'openai',
+    apiKeys: { openai: 'chat-only-key' },
+    sttApiKeys: { openai: '' }
+  });
+  assert.equal(chatOnly.available, false);
+
+  const separate = createSTT({
+    provider: 'codex',
+    sttProvider: 'openai',
+    apiKeys: {},
+    sttApiKeys: { openai: 'speech-only-key' }
+  });
+  assert.equal(separate.available, true);
+  assert.deepEqual(separate.providers, ['openai']);
 });
 
 // Regression for issue #25: Settings held a working Gemini model, but the STT

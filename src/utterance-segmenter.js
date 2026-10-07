@@ -39,7 +39,8 @@ class UtteranceSegmenter {
       sampleRate,
       ...vadOptions,
       onSpeechStart: () => this._beginUtterance(),
-      onSpeechEnd: (durationMs) => this._requestUtteranceEnd(durationMs)
+      onSpeechEnd: (durationMs) => this._requestUtteranceEnd(durationMs),
+      onFalseStart: () => this._discardFalseStart()
     });
   }
 
@@ -58,7 +59,7 @@ class UtteranceSegmenter {
     this.vad.processChunk(chunk);
 
     // A chunk that triggered speech start is already present in the pre-roll.
-    if (wasCollecting) this._appendChunk(chunk);
+    if (wasCollecting && this.collecting) this._appendChunk(chunk);
     if (this.endedDuringPush) this._finalizeUtterance();
   }
 
@@ -90,6 +91,15 @@ class UtteranceSegmenter {
   _requestUtteranceEnd(durationMs) {
     this.endedDuringPush = true;
     this.onSpeechState(this.channel, false, durationMs);
+  }
+
+  _discardFalseStart() {
+    if (!this.collecting) return;
+    this.collecting = false;
+    this.utteranceChunks = [];
+    this.utteranceBytes = 0;
+    this.ringBuffer.clear();
+    this.onSpeechState(this.channel, false, 0);
   }
 
   // Time O(n), space O(n) at each 25-second boundary; regular pushes are O(1).

@@ -67,6 +67,50 @@ test('first run (no file) with a token switches to publik; without a token it us
   assert.equal(noToken.store.getSettings().publik.defaultApplied, false);
 });
 
+test('migrates shared speech credentials once, then keeps chat and speech independent', () => {
+  const legacy = loadStore({
+    provider: 'codex',
+    sttProvider: 'openai',
+    apiKeys: { openai: 'legacy-openai', custom: 'legacy-custom' },
+    baseUrl: 'https://legacy-speech.example/v1',
+    sttModel: 'whisper-1'
+  });
+  const migrated = legacy.store.getSettings();
+  assert.deepEqual(migrated.sttApiKeys, { openai: 'legacy-openai', custom: 'legacy-custom' });
+  assert.equal(migrated.sttBaseUrl, 'https://legacy-speech.example/v1');
+
+  legacy.store.setSettings({
+    apiKeys: { openai: 'chat-new', custom: 'chat-custom-new' },
+    baseUrl: 'https://chat.example/v1',
+    sttApiKeys: { openai: 'speech-new', custom: 'speech-custom-new' },
+    sttBaseUrl: 'https://speech.example/v1'
+  });
+  const independent = legacy.store.getSettings();
+  assert.equal(independent.apiKeys.openai, 'chat-new');
+  assert.equal(independent.sttApiKeys.openai, 'speech-new');
+  assert.equal(independent.baseUrl, 'https://chat.example/v1');
+  assert.equal(independent.sttBaseUrl, 'https://speech.example/v1');
+});
+
+test('removes legacy global interview context from disk and rejects it in future patches', () => {
+  const legacy = loadStore({
+    provider: 'codex',
+    resumeText: 'old resume',
+    jobDescription: 'old job',
+    starStories: 'old story',
+    sessionContext: { title: 'old session' }
+  });
+  legacy.store.getSettings();
+  const migrated = legacy.read();
+  for (const key of ['resumeText', 'jobDescription', 'starStories', 'sessionContext']) {
+    assert.equal(Object.prototype.hasOwnProperty.call(migrated, key), false);
+  }
+
+  legacy.store.setSettings({ resumeText: 'must not return', context: 'global context' });
+  assert.equal(Object.prototype.hasOwnProperty.call(legacy.read(), 'resumeText'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(legacy.read(), 'context'), false);
+});
+
 test('a Custom provider with a base URL is untouched', () => {
   const { store, read } = loadStore({ provider: 'custom', baseUrl: 'http://127.0.0.1:18789/v1', apiKeys: { custom: '' } });
   assert.equal(store.applyPublikDefault(AVAILABLE), false);
@@ -130,6 +174,8 @@ test('defaults carry the publik model aliases and the settings file is written 0
   assert.deepEqual(store.getSettings().models.publik, { fast: 'publik-fast', smart: 'publik-balanced' });
   assert.deepEqual(store.getSettings().models.codex, { fast: '', smart: '' });
   assert.deepEqual(store.getSettings().models.claudeCode, { fast: '', smart: '' });
+  assert.deepEqual(store.getSettings().localWhisper, { modelId: 'large-v3', language: 'ru', threads: 0 });
+  assert.deepEqual(store.getSettings().screenCapture, { displayId: 'cursor' });
   store.setSettings({});
   if (process.platform !== 'win32') assert.equal(fs.statSync(file).mode & 0o777, 0o600);
 });

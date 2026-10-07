@@ -1,5 +1,6 @@
 const { UtteranceSegmenter } = require('./utterance-segmenter');
 const { WhisperServerSession } = require('./whisper-server-session');
+const { cleanTranscript } = require('./stt');
 
 const CHANNELS = Object.freeze(['you', 'them']);
 const DEFAULT_DRAIN_TIMEOUT_MS = 15000;
@@ -38,9 +39,10 @@ class LocalWhisperTranscriber {
       this.segmenters.set(channel, this.segmenterFactory({
         channel,
         vadOptions: {
-          onsetThreshold: isRemoteAudio ? 200 : 220,
-          offsetThreshold: isRemoteAudio ? 120 : 130,
-          silenceFrames: isRemoteAudio ? 20 : 18
+          onsetThreshold: isRemoteAudio ? 260 : 320,
+          offsetThreshold: isRemoteAudio ? 150 : 180,
+          silenceFrames: isRemoteAudio ? 20 : 18,
+          minSpeechFrames: 6
         },
         onSpeechState: (speechChannel, speaking, durationMs) => {
           this.onSpeechState(speechChannel, speaking, durationMs);
@@ -85,7 +87,7 @@ class LocalWhisperTranscriber {
 
     const job = this.queueTail.then(async () => {
       if (this.discardPendingJobs) return;
-      const text = await this.session.transcribe(pcm);
+      const text = cleanTranscript(await this.session.transcribe(pcm));
       if (text) this.onTranscript(channel, text);
     });
 

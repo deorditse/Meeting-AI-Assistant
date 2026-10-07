@@ -50,15 +50,15 @@ function getFamily(modelId) {
 
 function getQuantization(modelId) {
   const match = modelId.match(/-(q\d+_\d+)$/);
-  return match ? match[1].toUpperCase() : 'Full precision';
+  return match ? match[1].toUpperCase() : 'полная точность';
 }
 
 function getHardwareTier(family) {
-  if (family === 'tiny') return 'Lightest';
-  if (family === 'base') return 'Light';
-  if (family === 'small') return 'Balanced';
-  if (family === 'medium') return 'Heavy';
-  return 'Very heavy';
+  if (family === 'tiny') return 'минимальная нагрузка';
+  if (family === 'base') return 'лёгкая';
+  if (family === 'small') return 'средняя';
+  if (family === 'medium') return 'высокая';
+  return 'максимальная нагрузка';
 }
 
 function buildArtifact([id, bytes, sha256]) {

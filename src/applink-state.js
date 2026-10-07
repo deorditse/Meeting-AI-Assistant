@@ -10,8 +10,6 @@
 //     and did not agree to share. A turn count and a timestamp let Iris tell
 //     "transcription is working" from "transcription is silently dead", which
 //     is all it needs. The words never leave.
-//   • The résumé is the user's own history, and its presence is the only
-//     diagnostic fact about it.
 //   • Whether an API key is set is a diagnosis. The key is a liability.
 
 function describeState({ state, transcript, settings, sttDisabled, shortcuts, windowAlive, slides }) {
@@ -38,8 +36,6 @@ function describeState({ state, transcript, settings, sttDisabled, shortcuts, wi
     smart: !!settings.smart,
     models: (settings.models && settings.models[settings.provider]) || null,
     hasKey: Object.fromEntries(Object.keys(keys).map((name) => [name, !!keys[name]])),
-    hasResumeContext: !!(settings.resumeContext && settings.resumeContext.length),
-
     // A global shortcut another app registered first is a classic silent break:
     // the user presses the key, nothing happens, and m2a never knew.
     shortcuts: shortcuts || {},
@@ -74,10 +70,10 @@ function consentCopy(request) {
       : `${who} wants to see what m2a is doing.`,
     detail:
       (slides
-        ? 'm2a automatically captions slides shown on your screen during a meeting. This would let the caller read those captions — never a screenshot or the screen itself, and never your transcript, résumé or API keys. '
+        ? 'm2a automatically captions slides shown on your screen during a meeting. This would let the caller read those captions — never a screenshot or the screen itself, and never your transcript, session materials or API keys. '
         : action
         ? 'It would be able to start and stop listening. '
-        : 'It would be able to read m2a’s status, recent warnings and errors — never your transcript, your résumé or your API keys. ') +
+        : 'It would be able to read m2a’s status, recent warnings and errors — never your transcript, session materials or API keys. ') +
       (trusted
         ? 'Its code signature has been verified.'
         : 'm2a cannot verify what this program really is; anything running under your account could make the same claim.') +

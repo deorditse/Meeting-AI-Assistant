@@ -206,8 +206,8 @@ test('copy rule: the CTA copy says "publik API", dollars, never "credits", never
   }
   // The renderer and the settings card carry the same labels and the one sentence's toggle.
   const html = fs.readFileSync(path.join(__dirname, '..', 'frontend', 'src', 'pages', 'MeetingAssistant', 'components', 'MeetingAssistantView', 'meetingAssistantMarkup.html'), 'utf8');
-  assert.match(html, /id="publik-link"[^>]*>Link this computer &amp; pick a plan</);
-  assert.match(html, /id="publik-why-summary"[^>]*>Why it costs money</);
+  assert.match(html, /id="publik-link"[^>]*>Привязать компьютер и выбрать тариф</);
+  assert.match(html, /id="publik-why-summary"[^>]*>Почему это платно</);
   assert.match(html, /id="publik-why-text"/);
   const js = fs.readFileSync(path.join(__dirname, '..', 'frontend', 'src', 'pages', 'MeetingAssistant', 'model', 'mountMeetingAssistant.js'), 'utf8');
   assert.match(js, /m2a\.publikCardSeen\(\)/);

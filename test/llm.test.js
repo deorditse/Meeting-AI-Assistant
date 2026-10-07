@@ -124,7 +124,7 @@ test('requires a model for the Custom provider', () => {
   }));
 
   assert.equal(llm.ready, false);
-  assert.match(llm.configurationError, /Set a Fast or Smart model/);
+  assert.match(llm.configurationError, /Укажите быструю или умную модель/);
 });
 
 // ---- MiniMax (PR #22) -----------------------------------------------------
@@ -242,7 +242,7 @@ test('routes DeepSeek to its OpenAI-compatible endpoint', async () => {
 test('reports a configuration error when the DeepSeek key is missing', () => {
   const llm = createLLM(deepseekSettings({ apiKeys: { deepseek: '' } }));
   assert.equal(llm.ready, false);
-  assert.match(llm.configurationError, /Add your deepseek API key/);
+  assert.match(llm.configurationError, /Добавьте API-ключ deepseek/);
 });
 
 // ---- Gemini 404/429 error mapping ------------------------------------------

@@ -99,14 +99,6 @@ function createMeetingStore(opts = {}) {
       return m;
     },
 
-    // Compact summaries of the most recent meetings (for memory injection).
-    recentSummaries(n = 3) {
-      return meetings
-        .filter((m) => m.summary)
-        .slice(-n)
-        .map((m) => ({ id: m.id, title: m.title, startedAt: m.startedAt, summary: m.summary }));
-    },
-
     search(q) {
       if (!q) return [];
       const needle = q.toLowerCase();

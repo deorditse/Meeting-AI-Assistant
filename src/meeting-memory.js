@@ -1,15 +1,13 @@
-// Meeting memory — wires the meeting store (meetings.js) and notes (notes.js)
+// Meeting memory coordinates persistence and domain note formatting.
 // into the live transcript so m2a remembers what was said:
 //   • every transcript turn is persisted as it lands (survives a crash/restart)
 //   • an interrupted meeting is resumed on the next launch if it is recent
 //   • when listening stops, notes (summary / decisions / action items) are
 //     written with the LLM and stored; earlier-ended meetings without notes
 //     are caught up in the background on launch
-//   • the last few meeting summaries are offered as a "previous meetings"
-//     block for prompts
 // All I/O and the LLM are injected so the lifecycle is unit-testable.
 
-const { buildNotesPrompt, parseNotes } = require('./notes');
+const { buildNotesPrompt, parseNotes } = require('./domain/meeting-notes');
 
 const NOTES_SYSTEM =
   'You are m2a, writing private meeting notes for the user ("You") from a transcript of a conversation with ' +
@@ -19,8 +17,7 @@ const NOTES_SYSTEM =
 const DEFAULTS = {
   resumeWindowMs: 30 * 60 * 1000, // an open meeting whose last turn is older than this is treated as over
   minTurnsForNotes: 4,             // fewer than this is a false start, not a meeting worth notes
-  maxMeetings: 50,                 // kept on disk; oldest are pruned
-  memoryCount: 3                   // summaries offered to prompts
+  maxMeetings: 50                  // kept on disk; oldest are pruned
 };
 
 function createMeetingMemory(opts) {
@@ -129,17 +126,6 @@ function createMeetingMemory(opts) {
       let written = 0;
       for (const m of pending) { if (await writeNotes(m)) written++; } // sequential: one provider call at a time
       return written;
-    },
-
-    // "Previous meetings" context for prompts — summaries only, never full
-    // transcripts, and never the meeting that is happening right now.
-    memoryBlock() {
-      const items = store.recentSummaries(cfg.memoryCount + 1)
-        .filter((m) => !current || m.id !== current.id)
-        .slice(-cfg.memoryCount);
-      if (!items.length) return null;
-      const lines = items.map((m) => `- ${new Date(m.startedAt).toLocaleDateString()} — ${m.title}: ${m.summary}`);
-      return 'Previous meetings (for background only; the live transcript is what matters now):\n' + lines.join('\n');
     },
 
     flush() { store.flush(); }

@@ -8,6 +8,7 @@ const { app } = require('electron');
 const { createFileStore } = require('./settings-store-core');
 const { migrateLegacyUserData } = require('./user-data-migration');
 const { normalizeBaseUrl } = require('./openai-compatible');
+const { MAX_AI_RULES_CHARS } = require('./domain/prompt-rules');
 
 const fileStore = createFileStore(() => {
   const userDataPath = app.getPath('userData');
@@ -15,13 +16,12 @@ const fileStore = createFileStore(() => {
   return userDataPath;
 }, 'm2a-data.json');
 
-// Cap on the user's custom response rules. Generous but bounded: anything longer
-// should live in a real prompt file, not in a settings field.
-const MAX_AI_RULES_CHARS = 2000;
-
 const DEFAULTS = {
   provider: 'codex',
-  sttProvider: 'auto',
+  sttProvider: 'local',
+  sttApiKeys: { openai: '', custom: '' },
+  sttBaseUrl: '',
+  sttModel: 'whisper-1',
   localWhisper: {
     modelId: 'large-v3',
     language: 'ru',
@@ -60,24 +60,16 @@ const DEFAULTS = {
     cardShown: false,         // the first-run card (CONTRACT §12.1) was shown for the current starter grant
     lastError: ''
   },
-  // Tab 2: Profile
-  resumeText: '',
-  jobDescription: '',
-  // Tab 3: Interview Prep
-  starStories: '',       // 3-5 behavioral STAR stories
-  whyCompany: '',        // Why do you want to work here?
-  whyLeaving: '',        // Why are you leaving your current job?
-  workStyle: '',         // How you work, decision-making style, values
-  // Tab 4: Q&A
-  salaryTarget: '',      // e.g. "$150k-$180k base + equity"
-  questionsToAsk: '',    // Questions to ask the interviewer
-  // Tab 5: Style — custom response rules
+  // Global response style. Meeting materials belong to session context instead.
   // The user writes how the AI should write: e.g. "no em-dashes", "use bullet
   // points", "casual tone". Applied to every LLM mode EXCEPT LeetCode (kept
   // strict for coding problems).
   aiRules: '',
   // Overlay opacity (1 = fully opaque). Clamped so the window never vanishes.
   opacity: 1,
+  // Screen pixels are captured only by the explicit screenshot action.
+  // 'cursor' means the display containing the pointer at click time.
+  screenCapture: { displayId: 'cursor' },
   // Slides: opt-in auto slide tracking (memory-only, forwarded, never written to disk).
   slides: {
     enabled: false,
@@ -136,6 +128,21 @@ function clampOpacity(value) {
 }
 
 const RENDERER_READ_ONLY = ['publik'];
+const LEGACY_CONTEXT_FIELDS = [
+  'context', 'resumeText', 'jobDescription', 'starStories', 'whyCompany',
+  'whyLeaving', 'workStyle', 'salaryTarget', 'questionsToAsk', 'sessionContext'
+];
+
+function removeLegacyContextFields(target) {
+  let changed = false;
+  for (const field of LEGACY_CONTEXT_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(target, field)) {
+      delete target[field];
+      changed = true;
+    }
+  }
+  return changed;
+}
 
 let data = null;
 let lastError = null;
@@ -159,7 +166,23 @@ function deepMerge(base, over) {
 function load() {
   if (data) return data;
   const loaded = fileStore.load();
-  data = deepMerge(DEFAULTS, loaded ? loaded.data : {});
+  const saved = loaded ? loaded.data : {};
+  const needsSpeechCredentialMigration = loaded && !Object.prototype.hasOwnProperty.call(saved, 'sttApiKeys');
+  data = deepMerge(DEFAULTS, saved);
+  if (needsSpeechCredentialMigration) {
+    // Older builds reused chat credentials for speech. Copy them once so an
+    // existing setup keeps working, then persist separate fields from here on.
+    data.sttApiKeys = {
+      openai: saved.apiKeys?.openai || '',
+      custom: saved.apiKeys?.custom || ''
+    };
+    data.sttBaseUrl = saved.baseUrl || '';
+    data.sttModel = saved.sttModel || 'whisper-1';
+    save();
+  }
+  // Old global interview/profile context is migrated out permanently. Context
+  // now belongs to one in-memory chat session and cannot survive a restart.
+  if (removeLegacyContextFields(data)) save();
   if (loaded && loaded.recoveredFromBackup) save(); // best-effort heal so the corruption doesn't linger
   return data;
 }
@@ -200,6 +223,7 @@ function applyPublikDefault(build) {
 
 function stripRendererPatch(patch) {
   const out = { ...(patch || {}) };
+  removeLegacyContextFields(out);
   for (const k of RENDERER_READ_ONLY) delete out[k];
   if (out.apiKeys && typeof out.apiKeys === 'object') { out.apiKeys = { ...out.apiKeys }; delete out.apiKeys.publik; }
   return out;
@@ -238,8 +262,12 @@ module.exports = {
   setSettings(patch) {
     load();
     const nextSettings = deepMerge(data, patch || {});
+    if (!['codex', 'claudeCode', 'openai', 'anthropic', 'custom'].includes(nextSettings.provider)) nextSettings.provider = 'codex';
+    if (!['local', 'openai', 'custom'].includes(nextSettings.sttProvider)) nextSettings.sttProvider = 'local';
     nextSettings.baseUrl = normalizeBaseUrl(nextSettings.baseUrl);
+    nextSettings.sttBaseUrl = normalizeBaseUrl(nextSettings.sttBaseUrl);
     nextSettings.opacity = clampOpacity(nextSettings.opacity);
+    removeLegacyContextFields(nextSettings);
     data = nextSettings;
     save();
     return data;

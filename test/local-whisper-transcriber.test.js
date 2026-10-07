@@ -91,3 +91,24 @@ test('bounds shutdown drain time before aborting an in-flight inference', async 
   assert.deepEqual(reportedErrors, []);
   assert.deepEqual(stopOptions, [{ force: true }]);
 });
+
+test('filters local Whisper silence hallucinations before publishing', async () => {
+  const transcripts = [];
+  const fakeSession = {
+    async start() {},
+    async transcribe() { return 'Реальный вопрос? Спасибо. Продолжение следует.'; },
+    abortInferences() {},
+    async stop() {}
+  };
+  const transcriber = new LocalWhisperTranscriber({
+    sessionOptions: {},
+    sessionFactory: () => fakeSession,
+    segmenterFactory: (options) => ({ push: (pcm) => options.onUtterance(options.channel, pcm), stop() {} }),
+    onTranscript: (_channel, text) => transcripts.push(text)
+  });
+  await transcriber.start();
+  transcriber.push('you', Buffer.alloc(6400));
+  await transcriber.queueTail;
+  await transcriber.stop();
+  assert.deepEqual(transcripts, ['Реальный вопрос?']);
+});

@@ -8,6 +8,7 @@ const { RUNTIME_TARGETS, getRuntimeTarget, getRuntimeExecutablePath } = require(
 const { locateWhisperRuntime } = require('../src/whisper-runtime');
 
 test('publishes all 30 official model choices with immutable integrity metadata', () => {
+  assert.equal(DEFAULT_MODEL_ID, 'large-v3', 'Russian-first builds default to the highest-quality multilingual model');
   assert.equal(WHISPER_MODELS.length, 30);
   assert.equal(new Set(WHISPER_MODELS.map((model) => model.id)).size, 30);
   assert.equal(requireWhisperModel(DEFAULT_MODEL_ID).recommended, true);
@@ -64,4 +65,26 @@ test('locates packaged and prepared development runtimes without downloading cod
   });
   assert.equal(missing.available, false);
   assert.match(missing.message, /npm run prepare:whisper/);
+});
+
+test('prefers a runtime prepared in the per-user application data directory', (context) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'm2a-user-runtime-'));
+  context.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const userDataPath = path.join(root, 'user-data');
+  const runtimeDirectory = path.join(userDataPath, 'whisper-runtime');
+  fs.mkdirSync(runtimeDirectory, { recursive: true });
+  fs.writeFileSync(getRuntimeExecutablePath(runtimeDirectory, 'darwin', 'arm64'), 'runtime');
+
+  const runtime = locateWhisperRuntime({
+    isPackaged: true,
+    resourcesPath: path.join(root, 'resources'),
+    appPath: root,
+    userDataPath,
+    platform: 'darwin',
+    architecture: 'arm64',
+    environment: {}
+  });
+
+  assert.equal(runtime.available, true);
+  assert.equal(runtime.runtimeDirectory, runtimeDirectory);
 });

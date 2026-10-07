@@ -9,21 +9,51 @@ const BASE_VOCAB = 'CI/CD, Docker, Kubernetes, Terraform, Jenkins, AWS, Azure, G
   'pipeline, container, orchestration, Ansible, Prometheus, Grafana, Helm, EKS, ECS, Lambda, ' +
   'S3, EC2, IAM, GitHub Actions, GitLab, Kafka, PostgreSQL, Redis, MongoDB, REST API, gRPC';
 
-function looksLikeHallucination(raw) {
+const SILENCE_ARTIFACTS = new Set([
+  'thank you', 'thank you very much', 'thank you for watching', 'thanks for watching',
+  'please subscribe', 'like and subscribe', 'bye-bye', 'bye bye', 'bye', 'you', 'okay',
+  'спасибо', 'большое спасибо', 'спасибо за внимание', 'спасибо за просмотр',
+  'продолжение следует', 'подписывайтесь на канал', 'ставьте лайки', 'пока'
+]);
+
+function normalizeArtifactCandidate(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/ё/g, 'е')
+    .replace(/[«»"'()[\]{}.,!?…:;—–-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isArtifactFragment(value) {
+  const normalized = normalizeArtifactCandidate(value);
+  if (!normalized) return true;
+  if (SILENCE_ARTIFACTS.has(normalized)) return true;
+  return /^(субтитры|перевод|редактор)\s+(сделал|сделала|подготовил|подготовила)\b/.test(normalized);
+}
+
+function cleanTranscript(raw) {
   const trimmed = (raw || '').trim();
-  if (!trimmed) return true;
-  if (/^[\p{Emoji_Presentation}\p{Extended_Pictographic}\s]+$/u.test(trimmed)) return true;
-  const t = trimmed.replace(/[.,!?…]+$/g, '').trim().toLowerCase();
-  const artifacts = new Set([
-    'thank you', 'thank you very much', 'thank you for watching', 'thanks for watching',
-    'please subscribe', 'like and subscribe', 'bye-bye', 'bye bye', 'bye', 'you', 'okay'
-  ]);
-  return artifacts.has(t);
+  if (!trimmed) return '';
+  if (/^[\p{Emoji_Presentation}\p{Extended_Pictographic}\s]+$/u.test(trimmed)) return '';
+  const fragments = trimmed.match(/[^.!?…]+(?:[.!?…]+|$)/g) || [trimmed];
+  const kept = [];
+  for (const fragment of fragments) {
+    const value = fragment.trim();
+    if (!value || isArtifactFragment(value)) continue;
+    if (kept.length && normalizeArtifactCandidate(kept[kept.length - 1]) === normalizeArtifactCandidate(value)) continue;
+    kept.push(value);
+  }
+  return kept.join(' ').trim();
+}
+
+function looksLikeHallucination(raw) {
+  return cleanTranscript(raw) === '';
 }
 
 function buildVocabPrompt(settings) {
   const s = settings || {};
-  const text = (s.resumeText || '') + ' ' + (s.jobDescription || '');
+  const text = String(s.sttVocabulary || '');
   const proper = Array.from(new Set(text.match(/\b([A-Z][a-zA-Z0-9+.#]{2,}|[A-Z]{2,6})\b/g) || []));
   let prompt = BASE_VOCAB + (proper.length ? ', ' + proper.slice(0, 60).join(', ') : '');
   if (prompt.length > 850) prompt = prompt.slice(0, 850);
@@ -105,14 +135,16 @@ async function transcribeGemini(apiKey, wav) {
 
 function createSTT(settings) {
   const keys = settings.apiKeys || {};
+  const speechKeys = settings.sttApiKeys || {};
   const selectedProvider = settings.sttProvider || 'auto';
   const vocabPrompt = buildVocabPrompt(settings);
   const chain = [];
   // Each entry carries the model id it actually sends, so a failure can name
   // that id back to the user instead of a hardcoded one they never picked.
-  if ((selectedProvider === 'auto' || selectedProvider === 'openai') && keys.openai) {
+  const openaiKey = selectedProvider === 'openai' ? speechKeys.openai : keys.openai;
+  if ((selectedProvider === 'auto' || selectedProvider === 'openai') && openaiKey) {
     const model = settings.sttModel || 'whisper-1';
-    chain.push({ p: 'openai', m: model, fn: (wav) => transcribeOpenAI(keys.openai, wav, model, undefined, vocabPrompt) });
+    chain.push({ p: 'openai', m: model, fn: (wav) => transcribeOpenAI(openaiKey, wav, model, undefined, vocabPrompt) });
   }
   if ((selectedProvider === 'auto' || selectedProvider === 'groq') && keys.groq) {
     const model = 'whisper-large-v3-turbo';
@@ -131,8 +163,8 @@ function createSTT(settings) {
   // unlike a named provider, an arbitrary custom endpoint isn't known to speak
   // the audio-transcription API at all, so this only fires on an explicit
   // choice, and only once both the URL and the key it needs are actually set.
-  if (selectedProvider === 'custom' && keys.custom && settings.baseUrl) {
-    chain.push({ p: 'custom', fn: (wav) => transcribeOpenAI(keys.custom, wav, settings.sttModel, settings.baseUrl, vocabPrompt) });
+  if (selectedProvider === 'custom' && speechKeys.custom && settings.sttBaseUrl) {
+    chain.push({ p: 'custom', fn: (wav) => transcribeOpenAI(speechKeys.custom, wav, settings.sttModel, settings.sttBaseUrl, vocabPrompt) });
   }
   if (keys.openai && chain.length > 1) chain.unshift(chain.splice(chain.findIndex((c) => c.p === 'openai'), 1)[0]);
 
@@ -151,10 +183,10 @@ function createSTT(settings) {
       let lastErr = null;
       for (const c of chain) {
         try {
-          const text = await c.fn(wav);
+          const text = cleanTranscript(await c.fn(wav));
           disabledUntil = 0;
           lastProvider = c.p;
-          if (looksLikeHallucination(text)) return { text: '', provider: c.p };
+          if (!text) return { text: '', provider: c.p };
           return { text, provider: c.p };
         } catch (e) {
           // Shares detection/wording with the LLM error path (src/llm.js) so a
@@ -179,4 +211,4 @@ function createSTT(settings) {
   };
 }
 
-module.exports = { createSTT, looksLikeHallucination, buildVocabPrompt, transcribeGemini, transcribeGeminiWith, extractGeminiTranscript };
+module.exports = { createSTT, cleanTranscript, looksLikeHallucination, buildVocabPrompt, transcribeGemini, transcribeGeminiWith, extractGeminiTranscript };

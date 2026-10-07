@@ -1,11 +1,15 @@
 /* m2a renderer — UI state, mic capture, IPC, streaming render. */
 import { icon } from '@shared/lib/icons';
+import { createSessionContextController } from '../../../features/session-context/createSessionContextController';
+import { createMeetingHistoryController } from '../../../features/meeting-history/createMeetingHistoryController';
 
 export function mountMeetingAssistant() {
   const m2a = window.m2a; // exposed by preload
   const $ = (s) => document.querySelector(s);
   const isWindows = m2a.platform === 'win32';
   const isMac = m2a.platform === 'darwin';
+  const CHAT_PROVIDERS = new Set(['codex', 'claudeCode', 'openai', 'anthropic', 'custom']);
+  const STT_PROVIDERS = new Set(['local', 'openai', 'custom']);
 
   // Exiting must work before settings or provider setup has completed.
   const quitButton = $('#quit-btn');
@@ -19,6 +23,7 @@ export function mountMeetingAssistant() {
   $('#opacity-btn .ic').innerHTML = icon('eclipse', { size: 14 });
   $('#quit-btn').innerHTML = icon('x', { size: 14 });
   document.querySelector('.act[data-mode="assist"] .ic').innerHTML = icon('monitor', { size: 16 });
+  document.querySelector('.act[data-mode="screen"] .ic').innerHTML = icon('monitor', { size: 16 });
   document.querySelector('.act[data-mode="say"] .ic').innerHTML = icon('wand-sparkles', { size: 16 });
   document.querySelector('.act[data-mode="recap"] .ic').innerHTML = icon('refresh-cw', { size: 16 });
   $('#smart-toggle .ic').innerHTML = icon('zap', { size: 14 });
@@ -54,6 +59,7 @@ export function mountMeetingAssistant() {
   let caretEl = null;
   let responseCount = 0;
   const MAX_RESPONSES = 20;
+  const excludedTranscriptIds = new Set();
 
   const messages = $('#messages');
 
@@ -172,13 +178,17 @@ export function mountMeetingAssistant() {
 
   // ---- actions -----------------------------------------------------------
   function runMode(mode, text) {
-    if (busy) return;
+    // Main cancels the active generation when a new action arrives. Keep the
+    // controls usable while streaming so the latest user intent always wins.
     setBusy(true);
-    m2a.ask({ mode, text: text || '' });
+    m2a.ask({ mode, text: text || '', excludedTranscriptIds: [...excludedTranscriptIds] });
   }
 
   document.querySelectorAll('.act').forEach((btn) => {
-    btn.addEventListener('click', () => runMode(btn.dataset.mode, ''));
+    btn.addEventListener('click', () => {
+      const text = btn.dataset.mode === 'screen' ? ($('#input').value || '').trim() : '';
+      runMode(btn.dataset.mode, text);
+    });
   });
 
   const input = $('#input');
@@ -421,7 +431,7 @@ export function mountMeetingAssistant() {
     // FIX #10: Show undo hint when explicitly cleared
     if (showUndoHint && hadContent) {
       const undoHint = isWindows ? 'Ctrl+Z — отменить' : '⌘Z — отменить';
-      showToast(`Cleared · ${undoHint}`, 2000);
+      showToast(`Очищено · ${undoHint}`, 2000);
     }
   }
 
@@ -541,7 +551,7 @@ export function mountMeetingAssistant() {
   const sendBtn = document.getElementById('send-btn');
   if (sendBtn) {
     const forceKey = isWindows ? 'Ctrl+Shift+A' : '⌘⇧A';
-    sendBtn.title = `Send · ${forceKey} to force answer`;
+    sendBtn.title = `Отправить · ${forceKey} — ответить немедленно`;
   }
 
   // Smart toggle
@@ -627,17 +637,19 @@ export function mountMeetingAssistant() {
     el.addEventListener('change', () => applyOpacity(Number(el.value) / 100, true));
   });
 
-  // Stop = start/stop listening. Kick off system-audio capture straight from the click so
-  // the user-gesture is fresh for getDisplayMedia (loopback capture needs it).
+  // Stop = start/stop listening. The STT backend is started first. In particular,
+  // a missing local whisper.cpp runtime must not open macOS Screen Recording just
+  // because "meeting audio" is enabled: there is nowhere to send those samples.
   $('#stop-btn').addEventListener('click', async () => {
     const turningOn = !$('#stop-btn').classList.contains('active');
-    if (turningOn) {
-      // startSystemAudio may fail (user cancels, no permission) — that's OK,
-      // mic will still work and capture will toggle regardless
-      try { await startSystemAudio(); } catch (_) { /* handled inside startSystemAudio */ }
-    }
     const active = await m2a.captureToggle();
-    if (turningOn && !active) stopSystemAudio();
+    if (turningOn && active) {
+      // Electron handles getDisplayMedia through the main-process display-media
+      // handler, so it remains available after the IPC readiness check.
+      try { await startSystemAudio(); } catch (_) { /* handled inside startSystemAudio */ }
+    } else if (!active) {
+      stopSystemAudio();
+    }
   });
 
   // Transcript toggle removed — sidebar now auto-opens with listening
@@ -653,7 +665,7 @@ export function mountMeetingAssistant() {
       clearTranscriptSidebar();
       // Only a question auto-filled from the transcript goes; anything the user typed stays.
       if (inputFromSTT) hardClearSTTFill();
-      showToast('Transcript cleared.', 2500);
+      showToast('Расшифровка очищена.', 2500);
     });
   }
 
@@ -693,7 +705,7 @@ export function mountMeetingAssistant() {
       if (!track) {
         micStream.getTracks().forEach((t) => t.stop());
         micStream = null;
-        showStatus('No microphone audio track was available. Check Windows Sound settings for a working default input device, then try again.');
+        showStatus('Не найден аудиоканал микрофона. Проверьте устройство ввода по умолчанию в настройках звука Windows.');
         return;
       }
       m2a.log('mic stream started: track=' + (track.label || '(no label — permission may be stale)') + ' muted=' + track.muted);
@@ -734,15 +746,15 @@ export function mountMeetingAssistant() {
       // Distinguishing "no device" from "denied" from "in use elsewhere"
       // turns one generic dead end into three different next actions.
       if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
-        showStatus('No microphone was found. Plug one in, or pick a default input device in your OS sound settings, then try again.');
+        showStatus('Микрофон не найден. Подключите его или выберите устройство ввода по умолчанию в настройках системы.');
       } else if (name === 'NotAllowedError' || name === 'PermissionDeniedError' || name === 'SecurityError') {
         showStatus(isWindows
-          ? 'Microphone permission was denied. Settings → Privacy & security → Microphone → allow m2a, then try again.'
-          : 'Microphone permission was denied. System Settings → Privacy & Security → Microphone → allow m2a, then try again.');
+          ? 'Доступ к микрофону запрещён. Откройте Параметры → Конфиденциальность и безопасность → Микрофон и разрешите доступ M2A.'
+          : 'Доступ к микрофону запрещён. Откройте Системные настройки → Конфиденциальность и безопасность → Микрофон и разрешите доступ M2A.');
       } else if (name === 'NotReadableError' || name === 'TrackStartError') {
-        showStatus('The microphone could not be started — another application may be using it exclusively. Close other apps using the mic and try again.');
+        showStatus('Не удалось запустить микрофон: возможно, другое приложение использует его монопольно. Закройте такие приложения и повторите попытку.');
       } else {
-        showStatus('Microphone capture could not be started. Check your mic permissions and try again.');
+        showStatus('Не удалось запустить захват микрофона. Проверьте разрешения и повторите попытку.');
       }
     }
   }
@@ -773,13 +785,13 @@ export function mountMeetingAssistant() {
     // call. Default to staying invisible; the user opts in in Settings > Audio.
     if (isMac && !(settings && settings.meetingAudio)) {
       m2a.log('system audio: meeting audio is off on macOS -- no display-capture session opened');
-      showStatus('Meeting audio is off, so m2a stays invisible. macOS shows a screen-recording indicator whenever an app captures system audio; turn Meeting audio on in Settings \u203a Audio if you want the other side transcribed.');
+      showStatus('Звук встречи выключен, поэтому M2A остаётся незаметным. macOS показывает индикатор записи экрана при захвате системного звука; включите «Звук встречи» в Настройки › Аудио, если нужно распознавать собеседников.');
       return;
     }
     sysStarting = true;
     if (!navigator.mediaDevices || typeof navigator.mediaDevices.getDisplayMedia !== 'function') {
       m2a.log('system audio unavailable: getDisplayMedia not supported');
-      showStatus('Meeting audio capture is not available on this device build.');
+      showStatus('Захват звука встречи недоступен в этой сборке.');
       return;
     }
     try {
@@ -791,8 +803,8 @@ export function mountMeetingAssistant() {
         m2a.log('system audio: no loopback track on this platform');
         stream.getTracks().forEach((t) => t.stop());
         showStatus(m2a.platform === 'win32'
-          ? 'No system-audio loopback track detected. Make sure "Share audio" is checked in the screen share dialog, and that your audio device is not in exclusive mode.'
-          : 'No system-audio loopback track detected. Meeting audio needs macOS 14.4+ — your screen and microphone still work.');
+          ? 'Не найден канал системного звука. Убедитесь, что при демонстрации экрана включена передача звука и устройство не работает в монопольном режиме.'
+          : 'Не найден канал системного звука. Для звука встречи требуется macOS 14.4 или новее; экран и микрофон продолжат работать.');
         return;
       }
       sysStream = stream;
@@ -826,7 +838,12 @@ export function mountMeetingAssistant() {
     } catch (err) {
       const message = err && err.message ? err.message : String(err);
       m2a.log('system audio error: ' + message);
-      showStatus('Meeting audio could not be started. Grant screen/audio access to m2a and try again.');
+      if (isMac) {
+        m2a.openPane('x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture');
+        showStatus('Не удалось запустить звук встречи. Открыты настройки macOS: разрешите запись экрана и системного звука для «M2A - Meeting AI Assistant», затем полностью перезапустите M2A.');
+      } else {
+        showStatus('Не удалось запустить звук встречи. Проверьте системное разрешение на захват звука и повторите попытку.');
+      }
     } finally {
       sysStarting = false;
     }
@@ -960,7 +977,7 @@ export function mountMeetingAssistant() {
     closeSidebarBtn.addEventListener('click', hideSidebar);
   }
 
-  function appendTranscriptHistoryTurn(channel, text, isInterim) {
+  function appendTranscriptHistoryTurn(channel, text, isInterim, turnId = null) {
     const list = document.getElementById('ts-list');
     if (!list) return;
 
@@ -996,10 +1013,43 @@ export function mountMeetingAssistant() {
         if (txt) {
           txt.textContent = txt.textContent ? txt.textContent + ' ' + text : text;
         }
+        if (turnId != null) {
+          existingRow._transcriptIds.add(String(turnId));
+          if (existingRow.classList.contains('ts-excluded')) excludedTranscriptIds.add(String(turnId));
+        }
       } else {
-        // Start a new row (no buttons — just clean history view)
+        // Every block starts included. Clicking it toggles all transcript turns
+        // accumulated into this visual block in or out of the next AI request.
         const row = document.createElement('div');
-        row.className = 'ts-turn ts-' + channel;
+        row.className = 'ts-turn ts-' + channel + ' ts-included';
+        row._transcriptIds = new Set(turnId == null ? [] : [String(turnId)]);
+        row.setAttribute('role', 'button');
+        row.setAttribute('tabindex', '0');
+        row.setAttribute('aria-pressed', 'true');
+        row.title = 'Включено в контекст. Нажмите, чтобы исключить.';
+
+        const toggleRow = () => {
+          const willExclude = !row.classList.contains('ts-excluded');
+          row.classList.toggle('ts-excluded', willExclude);
+          row.classList.toggle('ts-included', !willExclude);
+          row.setAttribute('aria-pressed', String(!willExclude));
+          row.title = willExclude
+            ? 'Исключено из контекста. Нажмите, чтобы вернуть.'
+            : 'Включено в контекст. Нажмите, чтобы исключить.';
+          for (const id of row._transcriptIds) {
+            if (willExclude) excludedTranscriptIds.add(id);
+            else excludedTranscriptIds.delete(id);
+          }
+        };
+        row.addEventListener('click', () => {
+          if (window.getSelection && String(window.getSelection()).trim()) return;
+          toggleRow();
+        });
+        row.addEventListener('keydown', (event) => {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault();
+          toggleRow();
+        });
 
         const chLabel = document.createElement('span');
         chLabel.className = 'ts-channel';
@@ -1032,6 +1082,7 @@ export function mountMeetingAssistant() {
     const list = document.getElementById('ts-list');
     if (list) list.innerHTML = '<div class="ts-placeholder">Здесь появится расшифровка разговора.</div>';
     tsSidebarInterimEl = null;
+    excludedTranscriptIds.clear();
     tsLastRow.you = null; tsLastRow.them = null;
     clearTimeout(tsRowTimer.you); clearTimeout(tsRowTimer.them);
   }
@@ -1042,9 +1093,8 @@ export function mountMeetingAssistant() {
     setSessionButton(active);
     // FIX #4: Add .listening class to composer when capture is active
     composer.classList.toggle('listening', active);
-    // startSystemAudio() is called directly from the stop-button click handler
-    // so that the getDisplayMedia request has a fresh user gesture.
-    // Here we only start the mic (no gesture required) and stop everything on deactivate.
+    // System audio is started by the button handler only after this backend state
+    // has been confirmed. Here we start the mic and stop all streams on deactivate.
     if (active) {
       startMic();
       // Don't auto-open sidebar — user can toggle it manually
@@ -1147,8 +1197,8 @@ export function mountMeetingAssistant() {
   });
   m2a.on('slides:update', ({ count, last }) => {
     if (!count) return;
-    const title = last && last.caption ? last.caption.split('\n')[0].slice(0, 80) : 'Slide ' + count;
-    showToast(`Slide ${count} captured · ${title}`, 3000);
+    const title = last && last.caption ? last.caption.split('\n')[0].slice(0, 80) : 'Слайд ' + count;
+    showToast(`Слайд ${count} сохранён · ${title}`, 3000);
   });
   m2a.on('llm:start', ({ userBubble, small, category }) => {
     responseCount++;
@@ -1172,7 +1222,8 @@ export function mountMeetingAssistant() {
     if (category) {
       const pill = document.createElement('div');
       pill.className = 'category-pill';
-      pill.textContent = category.charAt(0).toUpperCase() + category.slice(1);
+      const categoryLabels = { general: 'Общее', behavioral: 'Поведенческий', technical: 'Технический', motivation: 'Мотивация', situational: 'Ситуационный', experience: 'Опыт', compensation: 'Компенсация' };
+      pill.textContent = categoryLabels[category] || category;
       group.appendChild(pill);
     }
     aiEl = document.createElement('div');
@@ -1207,9 +1258,9 @@ export function mountMeetingAssistant() {
     if (action && action.kind === 'card') { showPublikCard(); return; }
     if (action && action.kind) showStatus(message, publikActionButton(action));
   });
-  m2a.on('transcript', ({ channel, text }) => {
+  m2a.on('transcript', ({ channel, text, id }) => {
     if (!text || text.trim().length < 2 || /^[?!.,;:\-…]+$/.test(text.trim())) return;
-    appendTranscriptHistoryTurn(channel, text, false);
+    appendTranscriptHistoryTurn(channel, text, false, id);
     // Auto-fill the input box with Them (interviewer) speech
     if (channel === 'them') {
       cancelSoftClear(); // Interviewer is speaking, cancel any pending clear
@@ -1224,7 +1275,7 @@ export function mountMeetingAssistant() {
   m2a.on('transcript:restore', ({ turns }) => {
     for (const t of turns || []) {
       if (!t || !t.text || t.text.trim().length < 2) continue;
-      appendTranscriptHistoryTurn(t.channel, t.text, false);
+      appendTranscriptHistoryTurn(t.channel, t.text, false, t.id);
     }
   });
   let statusTimer = null;
@@ -1250,9 +1301,10 @@ export function mountMeetingAssistant() {
     clearTimeout(statusTimer);
     statusTimer = setTimeout(() => el.classList.remove('show'), button ? 30000 : 11000);
   }
-  m2a.on('status', ({ message }) => {
+  m2a.on('status', ({ message, settingsTab }) => {
     m2a.log('[status] ' + message);
     showStatus(message);
+    if (settingsTab) openSettings(settingsTab);
     if (sttState !== 'disconnected') {
       const lower = message.toLowerCase();
       if (lower.includes('error') || lower.includes(' off')) setSttState('error');
@@ -1319,14 +1371,38 @@ export function mountMeetingAssistant() {
 
   // ---- settings ----------------------------------------------------------
   const scrim = $('#settings-scrim');
-  function openSettings() {
+  function openSettings(tabName = null) {
     fillSettings();
     scrim.classList.remove('hidden');
+    if (tabName) {
+      const tab = document.querySelector(`.s-tab[data-tab="${tabName}"]`);
+      if (tab) showSettingsTab(tab);
+    }
     refreshWhisperModels();
+    refreshScreenList();
+  }
+
+  async function refreshScreenList() {
+    const select = $('#screen-display');
+    if (!select || !m2a.screenList) return;
+    const selected = settings.screenCapture?.displayId || 'cursor';
+    try {
+      const displays = await m2a.screenList();
+      select.innerHTML = '<option value="cursor">Экран, на котором находится курсор</option>';
+      displays.forEach((display, index) => {
+        const option = document.createElement('option');
+        option.value = display.id;
+        option.textContent = `${display.label || `Экран ${index + 1}`} — ${display.width}×${display.height}${display.primary ? ' (основной)' : ''}`;
+        select.appendChild(option);
+      });
+      select.value = [...select.options].some((option) => option.value === String(selected)) ? String(selected) : 'cursor';
+    } catch (error) {
+      m2a.log('screen list error: ' + (error && error.message ? error.message : error));
+    }
   }
   // Only hide after a successful save. A second closeSettings used to shadow
   // this one and always dismiss the modal, so validation errors (and any
-  // settings:set throw) vanished with the panel — keys, models, and résumé
+  // settings:set throw) vanished with the panel — keys and models
   // looked saved and then came back empty on the next launch.
   let closingSettings = false;
   async function closeSettings() {
@@ -1343,22 +1419,32 @@ export function mountMeetingAssistant() {
   $('#s-close').addEventListener('click', () => { void closeSettings(); });
   scrim.addEventListener('click', (e) => { if (e.target === scrim) void closeSettings(); });
 
+  function showSettingsTab(tab) {
+    document.querySelectorAll('.s-tab').forEach(t => t.classList.remove('on'));
+    document.querySelectorAll('.s-tab-pane').forEach(p => p.classList.add('hidden'));
+    tab.classList.add('on');
+    const pane = document.querySelector(`.s-tab-pane[data-pane="${tab.dataset.tab}"]`);
+    if (pane) pane.classList.remove('hidden');
+  }
+
   // Tab switching
   document.querySelectorAll('.s-tab').forEach((tab) => {
     tab.addEventListener('click', async () => {
       if (tab.classList.contains('on')) return;
       if (!(await saveSettings())) return;
-      document.querySelectorAll('.s-tab').forEach(t => t.classList.remove('on'));
-      document.querySelectorAll('.s-tab-pane').forEach(p => p.classList.add('hidden'));
-      tab.classList.add('on');
-      const pane = document.querySelector(`.s-tab-pane[data-pane="${tab.dataset.tab}"]`);
-      if (pane) pane.classList.remove('hidden');
+      showSettingsTab(tab);
     });
   });
+  const sessionContextController = createSessionContextController({ bridge: m2a, select: $ });
+  $('#context-btn').addEventListener('click', () => { void sessionContextController.open(); });
+  const meetingHistoryController = createMeetingHistoryController({ bridge: m2a, select: $ });
+  $('#sessions-btn').addEventListener('click', () => { void meetingHistoryController.open(); });
 
   function updateCustomProviderFields() {
     const provider = settings.provider;
     const isCli = provider === 'codex' || provider === 'claudeCode';
+    const credentialsLabel = $('#api-credentials-label');
+    if (credentialsLabel) credentialsLabel.classList.toggle('hidden', isCli);
     document.querySelectorAll('[data-key-for]').forEach((el) => {
       el.classList.toggle('hidden', el.dataset.keyFor !== provider);
     });
@@ -1381,21 +1467,43 @@ export function mountMeetingAssistant() {
     renderPublikBlock();
   }
 
+  function updateSttProviderFields() {
+    const provider = settings.sttProvider || 'local';
+    $('#stt-local-settings').classList.toggle('hidden', provider !== 'local');
+    $('#stt-openai-settings').classList.toggle('hidden', provider !== 'openai');
+    $('#stt-custom-settings').classList.toggle('hidden', provider !== 'custom');
+    const notes = {
+      local: 'Речь обрабатывается на этом компьютере и не отправляется во внешний сервис.',
+      openai: 'Речь отправляется в OpenAI Audio API. Подписка Codex не заменяет API-ключ для аудио.',
+      custom: 'Речь отправляется только на указанный вами OpenAI-совместимый сервер.'
+    };
+    $('#stt-provider-note').textContent = notes[provider] || '';
+  }
+
+  function mirrorSpeechModelInputs(sourceSelector, targetSelector) {
+    const source = $(sourceSelector);
+    const target = $(targetSelector);
+    if (!source || !target) return;
+    source.addEventListener('input', () => { target.value = source.value; });
+  }
+  mirrorSpeechModelInputs('#stt-model-openai', '#stt-model-custom');
+  mirrorSpeechModelInputs('#stt-model-custom', '#stt-model-openai');
+
   // ---- publik API (packaged-build default) --------------------------------
   function publikActionButton(action) {
     if (!action || !action.kind) return null;
     const btn = document.createElement('button');
     if (action.kind === 'link' && action.url) {
-      btn.textContent = action.label || 'Open publikhq.com';
+      btn.textContent = action.label || 'Открыть publikhq.com';
       btn.addEventListener('click', () => m2a.publikOpen(action.url));
     } else if (action.kind === 'reconnect') {
-      btn.textContent = action.label || 'Reconnect';
+      btn.textContent = action.label || 'Переподключить';
       btn.addEventListener('click', async () => { btn.disabled = true; publikState = await m2a.publikReconnect(); renderPublikBlock(); });
     } else if (action.kind === 'disclosure') {
-      btn.textContent = 'Set up publik API';
+      btn.textContent = 'Настроить publik API';
       btn.addEventListener('click', () => showPublikDisclosure());
     } else if (action.kind === 'card') {
-      btn.textContent = 'Show the publik API card';
+      btn.textContent = 'Показать карточку publik API';
       btn.addEventListener('click', () => showPublikCard());
     } else {
       return null;
@@ -1430,17 +1538,17 @@ export function mountMeetingAssistant() {
     note.classList.remove('warn');
     let line;
     if (p.connected && p.revoked) {
-      line = 'publik API key was revoked. Reconnect to set this computer up again.'; note.classList.add('warn');
+      line = 'publik API key was revoked. Переподключить to set this computer up again.'; note.classList.add('warn');
     } else if (p.connected) {
-      line = `Connected · key ${p.keyId} · ${p.line || 'Ready'}`;
+      line = `Подключено · ключ ${p.keyId} · ${p.line || 'готово'}`;
     } else if (p.disconnected) {
       line = 'publik API is disconnected. This computer was removed from your publik account.'; note.classList.add('warn');
     } else if (!p.disclosureAccepted) {
-      line = 'Not set up yet — no key needed to set it up.';
+      line = 'Ещё не настроено — для начала ключ не нужен.';
     } else if (p.lastError) {
       line = p.lastError; note.classList.add('warn');
     } else {
-      line = 'Connecting…';
+      line = 'Подключение…';
     }
     note.textContent = line;
     // Low starter: the same sentence the banner used, kept on the card.
@@ -1499,12 +1607,18 @@ export function mountMeetingAssistant() {
     const meetingAudioNote = $('#meeting-audio-note');
     if (meetingAudioNote) {
       meetingAudioNote.textContent = isMac
-        ? 'macOS can only capture system audio through a screen-capture session. While this is on, the menu bar shows the screen-recording indicator and Control Center lists m2a under \u201cCurrently Sharing\u201d \u2014 visible to everyone you screen-share with. Off by default; your microphone, screen capture and answers are unaffected.'
-        : 'Transcribes the other participants alongside your microphone. This platform\u2019s loopback capture shows no recording indicator.';
+        ? 'macOS захватывает системный звук через сессию записи экрана. При включении в строке меню появляется индикатор, видимый во время демонстрации. По умолчанию функция выключена.'
+        : 'Распознаёт остальных участников вместе с вашим микрофоном. На этой платформе захват системного звука не показывает индикатор записи.';
     }
     document.querySelectorAll('#stt-provider-seg button').forEach((button) => {
-      button.classList.toggle('on', button.dataset.sttProvider === (settings.sttProvider || 'auto'));
+      button.classList.toggle('on', button.dataset.sttProvider === (settings.sttProvider || 'local'));
     });
+    $('#stt-key-openai').value = settings.sttApiKeys?.openai || '';
+    $('#stt-key-custom').value = settings.sttApiKeys?.custom || '';
+    $('#stt-base-url').value = settings.sttBaseUrl || '';
+    $('#stt-model-openai').value = settings.sttModel || 'whisper-1';
+    $('#stt-model-custom').value = settings.sttModel || 'whisper-1';
+    updateSttProviderFields();
     const localWhisper = settings.localWhisper || { modelId: 'large-v3', language: 'ru', threads: 0 };
     $('#whisper-language').value = localWhisper.language || 'ru';
     $('#whisper-threads').value = Number(localWhisper.threads) || 0;
@@ -1559,20 +1673,20 @@ export function mountMeetingAssistant() {
 
   function statusText() {
     const k = settings.apiKeys;
-    const labels = { codex: 'Codex подписка', claudeCode: 'Claude Code подписка', publik: 'publik API', cerebras: 'Cerebras', openai: 'OpenAI', anthropic: 'Anthropic', gemini: 'Gemini', deepgram: 'Deepgram', custom: 'Custom', ollama: 'Ollama', groq: 'Groq', minimax: 'MiniMax', deepseek: 'DeepSeek', azure: 'Azure AI Foundry' };
-    const has = Object.keys(labels).filter((p) => k[p]).map((p) => labels[p]);
+    const labels = { codex: 'Codex подписка', claudeCode: 'Claude Code подписка', openai: 'OpenAI API', anthropic: 'Claude API', custom: 'Свой сервер' };
     const publikPart = settings.provider === 'publik' && publikState
       ? ` · ${publikState.connected ? (publikState.balanceLabel ? `balance ${publikState.balanceLabel}` : 'connected') : 'not set up'}`
       : '';
-    // 'auto' walks the same fallback chain src/stt.js builds; an explicit choice
-    // is reported as-is so the status line matches what will actually be used.
-    const selectedSttProvider = settings.sttProvider || 'auto';
-    const automaticStt = k.openai ? 'OpenAI Realtime' : (k.groq ? 'Groq Whisper' : 'none');
-    const stt = selectedSttProvider === 'auto' ? automaticStt : selectedSttProvider;
     const cliPart = ['codex', 'claudeCode'].includes(settings.provider) && cliProviderStatus
       ? ` · ${cliProviderStatus[settings.provider]?.loggedIn ? 'вход выполнен' : 'требуется вход'}`
       : '';
-    return `${labels[settings.provider] || settings.provider}${publikPart}${cliPart} · распознавание: ${stt}`;
+    if (['openai', 'anthropic'].includes(settings.provider)) {
+      return `${labels[settings.provider]} · ${k[settings.provider] ? 'ключ сохранён' : 'добавьте API-ключ'}`;
+    }
+    if (settings.provider === 'custom') {
+      return `Свой сервер · ${settings.baseUrl ? 'адрес указан' : 'укажите Base URL'}`;
+    }
+    return `${labels[settings.provider] || settings.provider}${publikPart}${cliPart}`;
   }
 
   document.querySelectorAll('#provider-seg button').forEach((b) => b.addEventListener('click', () => {
@@ -1600,6 +1714,7 @@ export function mountMeetingAssistant() {
     document.querySelectorAll('#stt-provider-seg button').forEach((candidate) => {
       candidate.classList.toggle('on', candidate === button);
     });
+    updateSttProviderFields();
     $('#s-status').textContent = statusText();
   }));
 
@@ -1622,7 +1737,7 @@ export function mountMeetingAssistant() {
     const language = model.englishOnly ? 'только английский' : 'многоязычная';
     const recommendation = model.recommended ? ' · максимум качества, рекомендуется' : '';
     const partial = model.partialBytes > 0 && !model.installed
-      ? ` · ${formatBytes(model.partialBytes)} ready to resume`
+      ? ` · загружено ${formatBytes(model.partialBytes)}, можно продолжить`
       : '';
     $('#whisper-model-detail').textContent = `${formatBytes(model.bytes)} · ${language} · ${model.quantization} · ${model.hardwareTier}${recommendation}${partial}`;
 
@@ -1647,28 +1762,38 @@ export function mountMeetingAssistant() {
       runtimeBadge.classList.toggle('ready', whisperOverview.runtime.available);
       runtimeBadge.classList.toggle('error', !whisperOverview.runtime.available);
       runtimeBadge.textContent = whisperOverview.runtime.available
-        ? `Ready · v${whisperOverview.runtime.version} · ${whisperOverview.runtime.target}`
-        : 'Not prepared';
+        ? `Готов · v${whisperOverview.runtime.version} · ${whisperOverview.runtime.target}`
+        : 'Не подготовлен';
       runtimeBadge.title = whisperOverview.runtime.message || '';
+      const runtimePrepareButton = $('#whisper-runtime-prepare');
+      runtimePrepareButton.classList.toggle('hidden', whisperOverview.runtime.available);
+      runtimePrepareButton.disabled = false;
+      runtimePrepareButton.textContent = 'Подготовить движок';
+      $('#whisper-runtime-help').textContent = whisperOverview.runtime.available
+        ? 'Движок whisper.cpp установлен. Ниже выберите модель, которая будет использоваться для распознавания.'
+        : 'Модель и движок — разные компоненты. M2A скачает проверенный исходный код whisper.cpp и подготовит движок локально. На macOS для сборки нужен CMake.';
 
       const select = $('#whisper-model');
       select.innerHTML = '';
       for (const model of whisperOverview.models) {
         const option = document.createElement('option');
         option.value = model.id;
-        option.textContent = `${model.label} — ${formatBytes(model.bytes)}${model.recommended ? ' (recommended)' : ''}${model.installed ? ' ✓' : ''}`;
+        option.textContent = `${model.label} — ${formatBytes(model.bytes)}${model.recommended ? ' (максимум качества)' : ''}${model.installed ? ' ✓' : ''}`;
         select.appendChild(option);
       }
       const selectionExists = whisperOverview.models.some((model) => model.id === previousSelection);
       select.value = selectionExists ? previousSelection : 'large-v3';
       if (!settings.localWhisper) settings.localWhisper = {};
       settings.localWhisper.modelId = select.value;
+      const selectedModel = whisperOverview.models.find((model) => model.id === select.value);
       status.textContent = whisperOverview.runtime.available
         ? 'Перед запуском проверяется целостность файла модели.'
-        : whisperOverview.runtime.message;
+        : selectedModel?.installed
+          ? `Модель ${selectedModel.id} установлена и проверена. Не установлен исполняемый движок whisper.cpp для ${whisperOverview.runtime.target}.`
+          : `Сначала установите модель и исполняемый движок whisper.cpp для ${whisperOverview.runtime.target}.`;
       renderWhisperModelState();
     } catch (error) {
-      status.textContent = `Could not load local model information: ${error.message}`;
+      status.textContent = `Не удалось загрузить сведения о локальных моделях: ${error.message}`;
     }
   }
 
@@ -1678,19 +1803,43 @@ export function mountMeetingAssistant() {
     renderWhisperModelState();
   });
 
+  $('#whisper-runtime-prepare').addEventListener('click', async () => {
+    const button = $('#whisper-runtime-prepare');
+    const status = $('#whisper-status');
+    button.disabled = true;
+    button.textContent = 'Подготавливаю…';
+    status.textContent = 'Скачиваю и собираю whisper.cpp. Это может занять несколько минут…';
+    try {
+      const result = await m2a.whisperRuntimePrepare();
+      if (!result?.ok) {
+        status.textContent = result?.message || 'Не удалось подготовить движок whisper.cpp.';
+        return;
+      }
+      await refreshWhisperModels();
+      status.textContent = result.message;
+    } catch (error) {
+      status.textContent = `Не удалось подготовить whisper.cpp: ${error.message}`;
+    } finally {
+      if (!whisperOverview?.runtime?.available) {
+        button.disabled = false;
+        button.textContent = 'Подготовить движок';
+      }
+    }
+  });
+
   $('#whisper-download').addEventListener('click', async () => {
     const model = getSelectedWhisperModel();
     if (!model) return;
     model.downloading = true;
     renderWhisperModelState();
-    $('#whisper-status').textContent = `Downloading ${model.id}. You can cancel and resume later.`;
+    $('#whisper-status').textContent = `Загрузка ${model.id}. Её можно прервать и продолжить позже.`;
     try {
       await m2a.whisperModelDownload(model.id);
-      $('#whisper-status').textContent = `${model.id} downloaded and verified.`;
+      $('#whisper-status').textContent = `${model.id}: модель скачана и проверена.`;
     } catch (error) {
       $('#whisper-status').textContent = error.message.includes('cancelled')
-        ? `${model.id} download paused. Progress was kept.`
-        : `Download failed: ${error.message}`;
+        ? `${model.id}: загрузка приостановлена, прогресс сохранён.`
+        : `Ошибка загрузки: ${error.message}`;
     } finally {
       await refreshWhisperModels();
     }
@@ -1704,12 +1853,12 @@ export function mountMeetingAssistant() {
   $('#whisper-import').addEventListener('click', async () => {
     const model = getSelectedWhisperModel();
     if (!model) return;
-    $('#whisper-status').textContent = `Verifying imported ${model.id}…`;
+    $('#whisper-status').textContent = `Проверка импортированной модели ${model.id}…`;
     try {
       const result = await m2a.whisperModelImport(model.id);
       $('#whisper-status').textContent = result.cancelled ? 'Импорт отменён.' : `${model.id} — импортирована и проверена.`;
     } catch (error) {
-      $('#whisper-status').textContent = `Import failed: ${error.message}`;
+      $('#whisper-status').textContent = `Ошибка импорта: ${error.message}`;
     } finally {
       await refreshWhisperModels();
     }
@@ -1717,12 +1866,12 @@ export function mountMeetingAssistant() {
 
   $('#whisper-delete').addEventListener('click', async () => {
     const model = getSelectedWhisperModel();
-    if (!model || !window.confirm(`Delete the ${model.id} model (${formatBytes(model.bytes)}) from this computer?`)) return;
+    if (!model || !window.confirm(`Удалить модель ${model.id} (${formatBytes(model.bytes)}) с этого компьютера?`)) return;
     try {
       await m2a.whisperModelDelete(model.id);
-      $('#whisper-status').textContent = `${model.id} deleted.`;
+      $('#whisper-status').textContent = `${model.id}: модель удалена.`;
     } catch (error) {
-      $('#whisper-status').textContent = `Delete failed: ${error.message}`;
+      $('#whisper-status').textContent = `Ошибка удаления: ${error.message}`;
     } finally {
       await refreshWhisperModels();
     }
@@ -1738,7 +1887,7 @@ export function mountMeetingAssistant() {
       $('#whisper-progress-wrap').classList.remove('hidden');
       $('#whisper-progress').value = progress.percent;
       $('#whisper-progress-label').textContent = `${progress.percent}%`;
-      $('#whisper-model-detail').textContent = `${formatBytes(progress.receivedBytes)} of ${formatBytes(progress.totalBytes)}`;
+      $('#whisper-model-detail').textContent = `${formatBytes(progress.receivedBytes)} из ${formatBytes(progress.totalBytes)}`;
     }
   });
   m2a.on('whisper:models-changed', () => refreshWhisperModels());
@@ -1773,6 +1922,15 @@ export function mountMeetingAssistant() {
       if (justFilled) settings.provider = justFilled;
     }
     // Transcription
+    if (!settings.sttApiKeys) settings.sttApiKeys = { openai: '', custom: '' };
+    if (settings.sttProvider === 'openai') {
+      settings.sttApiKeys.openai = $('#stt-key-openai').value.trim();
+      settings.sttModel = $('#stt-model-openai').value.trim() || 'whisper-1';
+    } else if (settings.sttProvider === 'custom') {
+      settings.sttApiKeys.custom = $('#stt-key-custom').value.trim();
+      settings.sttBaseUrl = $('#stt-base-url').value.trim();
+      settings.sttModel = $('#stt-model-custom').value.trim() || 'whisper-1';
+    }
     if (!settings.localWhisper) settings.localWhisper = {};
     settings.localWhisper.modelId = $('#whisper-model').value || settings.localWhisper.modelId || 'large-v3';
     settings.localWhisper.language = $('#whisper-language').value || 'ru';
@@ -1791,6 +1949,8 @@ export function mountMeetingAssistant() {
     // Appearance tab
     const opacitySlider = $('#s-opacity-slider');
     if (opacitySlider) settings.opacity = clampOpacity(Number(opacitySlider.value) / 100);
+    const screenDisplay = $('#screen-display');
+    settings.screenCapture = { ...(settings.screenCapture || {}), displayId: screenDisplay ? screenDisplay.value : 'cursor' };
     try {
       settings = await m2a.settingsSet(settings);
       $('#s-status').textContent = statusText();
@@ -1835,7 +1995,7 @@ export function mountMeetingAssistant() {
     // The window trails the cursor while dragging; going click-through then would drop the release.
     if (draggingWindow) return;
     const el = document.elementFromPoint(e.clientX, e.clientY);
-    const overUI = !!(el && el.closest && el.closest('#toolbar, #panel-wrap, #transcript-sidebar, #settings-scrim, #onboard-scrim, #consent-scrim'));
+    const overUI = !!(el && el.closest && el.closest('#toolbar, #panel-wrap, #transcript-sidebar, #settings-scrim, #context-scrim, #meetings-scrim, #onboard-scrim, #consent-scrim'));
     setIgnore(!overUI);
   });
   setIgnore(true); // start fully click-through; hovering the panel re-enables it
@@ -1934,7 +2094,7 @@ export function mountMeetingAssistant() {
     {
       icon: '✨',
       title: 'Всё готово',
-      body: 'Как пользоваться M2A:<ul><li>' + sayShortcut + ' — <strong>Что мне ответить?</strong> по ходу разговора</li><li>' + assistShortcut + ' — <strong>Умная помощь</strong> по экрану и разговору</li><li><strong>Начать сессию</strong> — включить распознавание встречи</li><li>Введите вопрос и нажмите <span class="kbd">↵</span></li></ul>Справку можно открыть значком в верхней панели. Выход: ' + quitShortcut + '.'
+      body: 'Как пользоваться M2A:<ul><li>' + sayShortcut + ' — <strong>Что мне ответить?</strong> по ходу разговора</li><li>' + assistShortcut + ' — <strong>Умная помощь</strong> по разговору</li><li><strong>Снимок экрана</strong> — однократно захватить выбранный монитор и отправить его AI</li><li><strong>Начать сессию</strong> — включить распознавание встречи</li></ul>Справку можно открыть значком в верхней панели. Выход: ' + quitShortcut + '.'
     }
   ];
   // First-run disclosure (R21 §4.3): two disclosures — cost and data path —
@@ -2053,13 +2213,19 @@ export function mountMeetingAssistant() {
   // ---- boot --------------------------------------------------------------
   (async function boot() {
     settings = await m2a.settingsGet();
+    const provider = CHAT_PROVIDERS.has(settings.provider) ? settings.provider : 'codex';
+    const sttProvider = STT_PROVIDERS.has(settings.sttProvider) ? settings.sttProvider : 'local';
+    if (provider !== settings.provider || sttProvider !== settings.sttProvider) {
+      settings = await m2a.settingsSet({ provider, sttProvider });
+    }
     const platformInfo = await m2a.platformInfo();
     publikState = await m2a.publikState();
     cliProviderStatus = m2a.cliProviderStatus ? await m2a.cliProviderStatus().catch(() => null) : null;
     // A build with no app token never shows the option, and keeps the BYO
     // onboarding card. With one, the "Connect an AI provider" card becomes the
     // publik disclosure; the BYO branch stays one tap away on that card.
-    if (publikState.available) OB_STEPS.splice(2, 1, { ...publikStep(), publik: true });
+    // The settings surface intentionally exposes only Codex/Claude subscription,
+    // their API variants, and a custom OpenAI-compatible endpoint.
 
     // R4: shortcut hints
     const sayHintEl = document.getElementById('say-shortcut-hint');
@@ -2072,8 +2238,8 @@ export function mountMeetingAssistant() {
       ? 'Предлагает ответ по ходу разговора (Ctrl+Enter)'
       : 'Предлагает ответ по ходу разговора (⌘↵)';
     if (assistBtn) assistBtn.title = isWindows
-      ? 'Анализирует экран и разговор (Ctrl+Shift+Enter)'
-      : 'Анализирует экран и разговор (⌘⇧↵)';
+      ? 'Анализирует разговор без снимка экрана (Ctrl+Shift+Enter)'
+      : 'Анализирует разговор без снимка экрана (⌘⇧↵)';
 
     // R6: smart tooltip
     updateSmartTooltip();
@@ -2095,7 +2261,7 @@ export function mountMeetingAssistant() {
 
     // Fix placeholder shortcut hint to match platform
     if (isWindows) {
-      placeholder.innerHTML = 'Спросите об экране или разговоре; <span class="keycap">Ctrl</span><span class="keycap">⇧</span><span class="keycap">⏎</span> — умная помощь';
+      placeholder.textContent = 'Введите вопрос о разговоре или нажмите «Снимок экрана»';
     }
 
     applyOpacity(settings.opacity, false);

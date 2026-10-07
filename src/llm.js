@@ -238,7 +238,7 @@ function stripDataUrl(dataUrl) {
   return m ? { mime: m[1], b64: m[2] } : null;
 }
 
-async function streamOpenAI({ apiKey, baseURL, model, system, turns, imageDataUrl, maxTokens, onToken, onResponse }) {
+async function streamOpenAI({ apiKey, baseURL, model, system, turns, imageDataUrl, maxTokens, onToken, onResponse, signal }) {
   const OpenAI = require('openai');
   const client = new OpenAI(baseURL ? { apiKey, baseURL } : { apiKey });
   const messages = [{ role: 'system', content: system }];
@@ -255,7 +255,7 @@ async function streamOpenAI({ apiKey, baseURL, model, system, turns, imageDataUr
       messages.push({ role: t.role, content: t.text });
     }
   });
-  const pending = client.chat.completions.create({ model, messages, stream: true, max_tokens: maxTokens });
+  const pending = client.chat.completions.create({ model, messages, stream: true, max_tokens: maxTokens }, { signal });
   let stream;
   if (typeof onResponse === 'function' && pending && typeof pending.withResponse === 'function') {
     // The gateway stamps x-publik-* headers at admission; hand the raw
@@ -285,9 +285,9 @@ function normalizeAzureBaseURL(raw) {
   return u;
 }
 
-async function streamAzure({ apiKey, model, system, turns, imageDataUrl, maxTokens, onToken, endpoint }) {
+async function streamAzure({ apiKey, model, system, turns, imageDataUrl, maxTokens, onToken, endpoint, signal }) {
   const url = normalizeAzureBaseURL(endpoint);
-  if (!url) throw new Error('Missing Azure endpoint. Add your Azure AI Foundry or Azure OpenAI endpoint in Settings.');
+  if (!url) throw new Error('Не указан адрес Azure. Добавьте endpoint Azure AI Foundry или Azure OpenAI в настройках.');
   const messages = [{ role: 'system', content: system }];
   turns.forEach((t, i) => {
     const last = i === turns.length - 1;
@@ -315,7 +315,7 @@ async function streamAzure({ apiKey, model, system, turns, imageDataUrl, maxToke
     };
     client = new OpenAI({ baseURL: url, apiKey, fetch: azureFetch });
   }
-  const stream = await client.chat.completions.create({ model, messages, stream: true, max_completion_tokens: maxTokens });
+  const stream = await client.chat.completions.create({ model, messages, stream: true, max_completion_tokens: maxTokens }, { signal });
   let full = '';
   for await (const part of stream) {
     const d = part.choices && part.choices[0] && part.choices[0].delta && part.choices[0].delta.content;
@@ -324,7 +324,7 @@ async function streamAzure({ apiKey, model, system, turns, imageDataUrl, maxToke
   return full;
 }
 
-async function streamAnthropic({ apiKey, model, system, turns, imageDataUrl, maxTokens, onToken }) {
+async function streamAnthropic({ apiKey, model, system, turns, imageDataUrl, maxTokens, onToken, signal }) {
   const Anthropic = require('@anthropic-ai/sdk');
   const client = new Anthropic({ apiKey });
   const messages = turns.map((t, i) => {
@@ -338,7 +338,7 @@ async function streamAnthropic({ apiKey, model, system, turns, imageDataUrl, max
     }
     return { role: t.role, content: t.text };
   });
-  const stream = await client.messages.create({ model, max_tokens: maxTokens, system, messages, stream: true });
+  const stream = await client.messages.create({ model, max_tokens: maxTokens, system, messages, stream: true }, { signal });
   let full = '';
   for await (const ev of stream) {
     if (ev.type === 'content_block_delta' && ev.delta && ev.delta.type === 'text_delta') { full += ev.delta.text; onToken(ev.delta.text); }
@@ -365,7 +365,7 @@ function geminiGenerationConfig({ system, maxTokens, thinking }) {
   return config;
 }
 
-async function streamGemini({ apiKey, model, system, turns, imageDataUrl, maxTokens, thinking, onToken }) {
+async function streamGemini({ apiKey, model, system, turns, imageDataUrl, maxTokens, thinking, onToken, signal }) {
   const { GoogleGenAI } = require('@google/genai');
   const ai = new GoogleGenAI({ apiKey });
   const contents = turns.map((t, i) => {
@@ -390,13 +390,14 @@ async function streamGemini({ apiKey, model, system, turns, imageDataUrl, maxTok
   }
   let full = '';
   for await (const chunk of stream) {
+    if (signal && signal.aborted) throw Object.assign(new Error('Запрос отменён.'), { name: 'AbortError' });
     const t = chunk && chunk.text;
     if (t) { full += t; onToken(t); }
   }
   return full;
 }
 
-async function streamOllama({ apiKey, model, system, turns, imageDataUrl, maxTokens, onToken }) {
+async function streamOllama({ apiKey, model, system, turns, imageDataUrl, maxTokens, onToken, signal }) {
   const baseUrl = apiKey || 'http://localhost:11434';
   const url = `${baseUrl.replace(/\/$/, '')}/api/chat`;
 
@@ -420,7 +421,8 @@ async function streamOllama({ apiKey, model, system, turns, imageDataUrl, maxTok
     response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, messages, stream: true })
+      body: JSON.stringify({ model, messages, stream: true }),
+      signal
     });
   } catch (err) {
     throw new Error(`Ollama fetch failed: ${err.message}. Is Ollama running at ${baseUrl}?`);
@@ -505,16 +507,16 @@ function createLLM(settings) {
       configurationError = error.message;
     }
     if (!model && !configurationError) {
-      configurationError = 'Set a Fast or Smart model for the Custom provider.';
+      configurationError = 'Укажите быструю или умную модель для собственного сервера.';
     }
   } else if (provider !== 'ollama' && !CLI_PROVIDERS.has(provider) && !apiKey) {
     // Ollama is a local server: the field holds a URL, and no key is required.
-    configurationError = `Add your ${provider} API key in Settings.`;
+    configurationError = `Добавьте API-ключ ${provider} в настройках.`;
   }
 
   // Azure needs a second credential: the resource endpoint.
   if (!configurationError && provider === 'azure' && !endpoint) {
-    configurationError = 'Add your Azure AI Foundry endpoint in Settings.';
+    configurationError = 'Добавьте endpoint Azure AI Foundry в настройках.';
   }
 
   const ready = !configurationError && (CLI_PROVIDERS.has(provider) || !!model);
@@ -525,7 +527,7 @@ function createLLM(settings) {
     ready,
     configurationError,
     async stream(params) {
-      if (!ready) throw new Error(configurationError || `Complete the ${provider} provider settings.`);
+      if (!ready) throw new Error(configurationError || `Завершите настройку провайдера ${provider}.`);
       const args = { apiKey, baseURL, endpoint, model, maxTokens, thinking: !!settings.smart, ...params, turns: sanitizeTurns(params.turns) };
       try {
         if (provider === 'codex') return await streamCodexSubscription(args);

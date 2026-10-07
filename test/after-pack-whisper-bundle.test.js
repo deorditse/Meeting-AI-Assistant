@@ -52,6 +52,14 @@ function fakeContext(nodeName, archName) {
   };
 }
 
+test('local macOS packs prefer a stable Apple Development identity and retain an ad-hoc fallback', () => {
+  const source = require('node:fs').readFileSync(path.join(__dirname, '..', 'scripts', 'after-pack.js'), 'utf8');
+  assert.match(source, /execFileSync\('\/usr\/bin\/codesign'/);
+  assert.match(source, /findStableLocalMacIdentity\(\) \|\| '-'/);
+  assert.match(source, /'--force', '--deep', '--sign', identity/);
+  assert.match(source, /process\.env\.MAC_SIGN !== '1'/);
+});
+
 test.beforeEach(() => {
   capturedPrepareCalls = [];
   delete process.env.M2A_BUNDLE_WHISPER;

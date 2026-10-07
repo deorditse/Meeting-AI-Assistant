@@ -46,16 +46,6 @@ test('search matches title/summary/transcript', () => {
   assert.strictEqual(s.search('zzz-nothing').length, 0);
 });
 
-test('recentSummaries returns only meetings with a summary', () => {
-  const s = tmpStore();
-  const a = s.add();
-  s.add(); // no summary
-  s.update(a.id, { summary: 'One' });
-  const rs = s.recentSummaries(5);
-  assert.strictEqual(rs.length, 1);
-  assert.strictEqual(rs[0].summary, 'One');
-});
-
 test('remove deletes a meeting', () => {
   const s = tmpStore();
   const m = s.add();

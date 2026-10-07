@@ -180,6 +180,10 @@ m2a keeps what it hears. Every transcript turn is saved to `meetings.json` in m2
 
 In **Settings**, paste your résumé or professional background into **Résumé / professional background**. m2a uses it as the factual reference for career-related answers and says when the résumé does not provide a detail. You can clear it anytime.
 
+### Context for the current session
+
+Before a meeting, press **Context** in the session panel (or open **Settings → Context**) and add its topic, notes, examples, files, or web links. M2A supports PDF, DOCX, TXT, Markdown, CSV, JSON, and HTML files; for links it downloads and extracts the readable text when you add the URL. The prepared material lives only in memory for the current session, is included with answers from the selected AI provider, and is deleted when the session ends.
+
 ### Step 3 — The Zoom setting (only needed for Zoom)
 
 m2a is hidden from most screen-share tools automatically — **Google Meet, Microsoft Teams, and QuickTime need nothing.** **Zoom** has a specific setting that decides whether it respects m2a's "don't capture me" flag:
@@ -285,9 +289,10 @@ Run `xattr -cr /Applications/m2a.app` in Terminal once (see Install → Option A
 - Your API keys live in a local file (`m2a-data.json`) and are sent only to the provider you chose.
 - When Custom is selected, its API key and LLM request data are sent to the Base URL you configured.
 - Your optional résumé text also lives in `m2a-data.json` and is sent with each model request to your selected AI provider. It is stored as plain text; clear it in Settings to remove it.
+- Current-session notes and extracted file/link text stay in memory until the session ends or you clear them, and are sent to the selected AI provider only with an answer request.
 - In Local transcription mode, microphone and meeting audio stay on your computer. In cloud transcription modes, audio is sent only to the selected speech provider.
 - Audio utterances and the current transcript stay in memory; M2A does not write captured audio to disk. Downloaded local model files remain on disk until you delete them.
-- Screenshots are sent to your selected chat provider only when a feature needs the screen.
+- A screenshot is created and sent to your selected chat provider only after you press **Screenshot**.
 
 ## Contributing
 

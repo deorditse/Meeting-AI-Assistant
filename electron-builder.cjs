@@ -9,8 +9,9 @@
  *     signs with the hardened runtime, notarizes, and staples. The app then
  *     opens on the first double-click with no warning at all.
  *
- *   • Ad-hoc fallback (no cert) — identity:null, so a fork or a secret-less CI
- *     run still produces a valid (not "damaged") build. It is NOT distributable:
+ *   • Ad-hoc fallback (no cert) — identity:null prevents certificate discovery;
+ *     scripts/after-pack.js then applies a local ad-hoc signature so macOS can
+ *     identify M2A for Screen Recording. It is NOT distributable:
  *     macOS refuses it after a download, and since macOS 15 the old
  *     right-click → Open escape hatch is gone.
  */
@@ -35,7 +36,15 @@ module.exports = {
   // An allowlist, so anything new has to be added here or it simply is not in
   // the shipped app — and the only symptom is a require() that throws at
   // launch, in a build that ran fine from source.
-  files: ["main.js", "preload.js", "src/**/*", "renderer-dist/**/*", "vendor/**/*"],
+  files: [
+    "main.js",
+    "preload.js",
+    "src/**/*",
+    "renderer-dist/**/*",
+    "vendor/**/*",
+    "scripts/prepare-whisper-runtime.js",
+    "build-resources/whisper.cpp.LICENSE"
+  ],
   directories: { buildResources: "build-resources" },
   afterPack: "scripts/after-pack.js",
   mac: {

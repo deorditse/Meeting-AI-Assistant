@@ -51,9 +51,13 @@
               </button>
               <span class="sep">•</span>
               <button class="act act-secondary" data-mode="assist"
-                title="Анализирует экран и разговор">
+                title="Анализирует разговор без снимка экрана">
                 <span class="ic"></span><span>Умная помощь</span>
                 <span class="shortcut-hint" id="assist-shortcut-hint"></span>
+              </button>
+              <span class="sep">•</span>
+              <button class="act" data-mode="screen" title="Сделать снимок выбранного экрана и отправить его AI">
+                <span class="ic"></span><span>Снимок экрана</span>
               </button>
               <span class="sep">•</span>
               <button class="act" data-mode="recap"><span class="ic"></span><span>Итоги</span></button>
@@ -61,12 +65,14 @@
 
             <div id="composer">
               <div id="input-area">
-                <div id="placeholder">Спросите об экране или разговоре; <span class="keycap">⌘</span><span class="keycap">⇧</span><span class="keycap">⏎</span> — умная помощь</div>
+                <div id="placeholder">Введите вопрос о разговоре или нажмите «Снимок экрана»</div>
                 <textarea id="input" rows="1" spellcheck="false"></textarea>
               </div>
               <div id="composer-bottom">
                 <button id="smart-toggle" class="smart-pill"><span class="ic"></span><span>Умный режим</span></button>
-                <button id="history-btn" class="history-btn" title="Показать расшифровку сессии"><span class="ic"></span><span>История</span></button>
+                <button id="history-btn" class="history-btn" title="Показать текущую расшифровку"><span class="ic"></span><span>Расшифровка</span></button>
+                <button id="sessions-btn" class="history-btn" title="Просмотреть сохранённые сессии"><span>Сессии</span></button>
+                <button id="context-btn" class="history-btn" title="Материалы текущей сессии"><span>Контекст</span></button>
                 <button id="more-btn" class="more-btn" title="Настройки"></button>
                 <div class="spacer"></div>
                 <button id="send-btn" title="Отправить"></button>
@@ -80,7 +86,7 @@
       <!-- Transcript history sidebar — slides out from behind the panel's right edge -->
       <div id="transcript-sidebar" class="transcript-sidebar">
         <div class="ts-header">
-          <span class="ts-title">История распознавания</span>
+          <span class="ts-title">История распознавания<small>Подсвеченные блоки входят в контекст</small></span>
           <button class="ts-close-btn" id="close-sidebar-btn" title="Закрыть историю">✕</button>
         </div>
         <div id="ts-list" class="ts-list">
@@ -112,74 +118,67 @@
       <!-- Tab: Keys -->
       <div class="s-body s-tab-pane" data-pane="keys">
         <label class="s-label">Провайдер</label>
-        <div class="s-seg" id="provider-seg">
-          <button data-provider="publik" id="provider-publik" class="hidden">publik API <span class="s-default-badge">default</span></button>
+        <div class="s-seg s-seg-wrap" id="provider-seg">
+          <button data-provider="publik" id="provider-publik" class="hidden">publik API</button>
           <button data-provider="codex">Codex подписка</button>
           <button data-provider="claudeCode">Claude Code подписка</button>
-          <button data-provider="cerebras">Cerebras</button>
-          <button data-provider="openai">OpenAI</button>
-          <button data-provider="anthropic">Anthropic</button>
-          <button data-provider="gemini">Gemini</button>
-          <button data-provider="groq">Groq</button>
-          <button data-provider="custom">Custom</button>
-          <button data-provider="ollama">Ollama</button>
-          <button data-provider="minimax">MiniMax</button>
-          <button data-provider="deepseek">DeepSeek</button>
-          <button data-provider="azure">Azure AI</button>
+          <button data-provider="openai">OpenAI API</button>
+          <button data-provider="anthropic">Claude API</button>
+          <button data-provider="custom">Свой сервер</button>
         </div>
 
         <div id="cli-subscription-settings" class="s-note hidden"></div>
-        <label class="s-label">API-ключи и URL <span class="s-hint">хранятся только локально</span></label>
-        <div class="s-field" data-key-for="cerebras"><span>Cerebras</span><input id="key-cerebras" type="password" placeholder="csk-..." autocomplete="off" /></div>
+        <label id="api-credentials-label" class="s-label">Доступ к API <span class="s-hint">хранится только локально</span></label>
+        <div class="s-field hidden" data-key-for="cerebras"><span>Cerebras</span><input id="key-cerebras" type="password" placeholder="csk-..." autocomplete="off" /></div>
         <div class="s-field" data-key-for="openai"><span>OpenAI</span><input id="key-openai" type="password" placeholder="sk-..." autocomplete="off" /></div>
         <div class="s-field" data-key-for="anthropic"><span>Anthropic</span><input id="key-anthropic" type="password" placeholder="sk-ant-..." autocomplete="off" /></div>
-        <div class="s-field" data-key-for="gemini"><span>Gemini</span><input id="key-gemini" type="password" placeholder="AIza..." autocomplete="off" /></div>
-        <div class="s-field" data-key-for="deepgram"><span>Deepgram</span><input id="key-deepgram" type="password" placeholder="dg-..." autocomplete="off" /></div>
-        <div class="s-field" data-key-for="groq"><span>Groq</span><input id="key-groq" type="password" placeholder="gsk_..." autocomplete="off" /></div>
+        <div class="s-field hidden" data-key-for="gemini"><span>Gemini</span><input id="key-gemini" type="password" placeholder="AIza..." autocomplete="off" /></div>
+        <div class="s-field hidden" data-key-for="deepgram"><span>Deepgram</span><input id="key-deepgram" type="password" placeholder="dg-..." autocomplete="off" /></div>
+        <div class="s-field hidden" data-key-for="groq"><span>Groq</span><input id="key-groq" type="password" placeholder="gsk_..." autocomplete="off" /></div>
         <div class="s-field" data-key-for="custom"><span>Custom</span><input id="key-custom" type="password" placeholder="optional" autocomplete="off" /></div>
-        <div class="s-field" data-key-for="minimax"><span>MiniMax</span><input id="key-minimax" type="password" placeholder="MiniMax API key" autocomplete="off" /></div>
+        <div class="s-field hidden" data-key-for="minimax"><span>MiniMax</span><input id="key-minimax" type="password" placeholder="MiniMax API key" autocomplete="off" /></div>
 
         <div id="minimax-region-settings" class="hidden">
-          <label class="s-label">MiniMax region <span class="s-hint">keys are region-bound — a Global key will 401 against China, and vice versa</span></label>
+          <label class="s-label">Регион MiniMax <span class="s-hint">ключи привязаны к региону</span></label>
           <div class="s-seg" id="minimax-region-seg">
-            <button data-region="global_en">Global</button>
-            <button data-region="cn_zh">China</button>
+            <button data-region="global_en">Международный</button>
+            <button data-region="cn_zh">Китай</button>
           </div>
         </div>
 
         <div id="custom-endpoint-settings" class="hidden">
-          <label class="s-label" for="base-url">Custom endpoint <span class="s-hint">OpenAI-compatible chat API</span></label>
+          <label class="s-label" for="base-url">Свой сервер <span class="s-hint">API, совместимый с OpenAI</span></label>
           <div class="s-field"><span>Base URL</span><input id="base-url" type="url" placeholder="http://127.0.0.1:18789/v1" autocomplete="off" spellcheck="false" /></div>
-          <div class="s-help">Your Custom key and LLM requests are sent to this URL. To also use it for speech-to-text, pick Custom on the Audio tab — otherwise transcription uses OpenAI or Groq.</div>
+          <div class="s-help">Ключ и запросы LLM отправляются на этот URL. Чтобы использовать сервер для речи, выберите «Свой сервер» на вкладке «Аудио».</div>
         </div>
 
         <!-- publik API: the packaged-build default. Text and buttons are filled by
              renderPublikBlock() from publik:state so the copy has one source. -->
         <div id="publik-settings" class="publik-card hidden">
-          <div class="publik-line" id="publik-status-note">Not connected</div>
+          <div class="publik-line" id="publik-status-note">Не подключено</div>
           <div class="publik-line warn hidden" id="publik-low-note"></div>
           <div class="s-note" id="publik-cost-note"></div>
           <details class="publik-why" id="publik-why">
-            <summary id="publik-why-summary">Why it costs money</summary>
+            <summary id="publik-why-summary">Почему это платно</summary>
             <div class="s-note" id="publik-why-text"></div>
           </details>
           <div class="s-note" id="publik-data-note"></div>
           <div class="whisper-actions">
-            <button id="publik-setup" class="s-action hidden">Set up publik API</button>
-            <button id="publik-link" class="s-action primary hidden">Link this computer &amp; pick a plan</button>
-            <button id="publik-add-credit" class="s-action hidden">Add a plan or pack</button>
-            <button id="publik-reconnect" class="s-action hidden">Reconnect</button>
-            <button id="publik-pricing" class="s-action">How pricing works</button>
-            <button id="publik-byo" class="s-action">Use my own key instead</button>
-            <button id="publik-disconnect" class="s-action danger hidden">Disconnect publik API</button>
+            <button id="publik-setup" class="s-action hidden">Настроить publik API</button>
+            <button id="publik-link" class="s-action primary hidden">Привязать компьютер и выбрать тариф</button>
+            <button id="publik-add-credit" class="s-action hidden">Выбрать тариф или пакет</button>
+            <button id="publik-reconnect" class="s-action hidden">Переподключить</button>
+            <button id="publik-pricing" class="s-action">Как устроена оплата</button>
+            <button id="publik-byo" class="s-action">Использовать свой ключ</button>
+            <button id="publik-disconnect" class="s-action danger hidden">Отключить publik API</button>
           </div>
         </div>
-        <div class="s-field" data-key-for="ollama"><span>Ollama URL</span><input id="key-ollama" type="text" placeholder="http://localhost:11434" autocomplete="off" /></div>
-        <div class="s-field" data-key-for="deepseek"><span>DeepSeek</span><input id="key-deepseek" type="password" placeholder="sk-..." autocomplete="off" /></div>
-        <div class="s-field" data-key-for="azure"><span>Azure AI Foundry</span><input id="key-azure" type="password" placeholder="azure key or Entra token" autocomplete="off" /></div>
+        <div class="s-field hidden" data-key-for="ollama"><span>Ollama URL</span><input id="key-ollama" type="text" placeholder="http://localhost:11434" autocomplete="off" /></div>
+        <div class="s-field hidden" data-key-for="deepseek"><span>DeepSeek</span><input id="key-deepseek" type="password" placeholder="sk-..." autocomplete="off" /></div>
+        <div class="s-field hidden" data-key-for="azure"><span>Azure AI Foundry</span><input id="key-azure" type="password" placeholder="azure key or Entra token" autocomplete="off" /></div>
 
         <div id="azure-endpoint-settings" class="hidden">
-          <label class="s-label" for="azure-endpoint">Azure endpoint <span class="s-hint">Azure OpenAI: https://&lt;resource&gt;.openai.azure.com/openai · AI Foundry: https://&lt;host&gt;.cognitiveservices.azure.com (m2a adds /openai/v1)</span></label>
+          <label class="s-label" for="azure-endpoint">Адрес Azure <span class="s-hint">M2A автоматически добавляет /openai/v1</span></label>
           <div class="s-field"><span>Endpoint</span><input id="azure-endpoint" type="text" placeholder="https://host.cognitiveservices.azure.com" autocomplete="off" /></div>
         </div>
 
@@ -189,8 +188,8 @@
           <div class="s-field"><span>Умная</span><input id="model-smart" type="text" autocomplete="off" /></div>
         </div>
 
-        <label class="s-label">Assistant access <span class="s-hint">programs allowed to see what m2a is doing</span></label>
-        <div class="s-callers" id="applink-callers"></div>
+        <label class="s-label hidden">Доступ приложений</label>
+        <div class="s-callers hidden" id="applink-callers"></div>
 
         <div class="s-status" id="s-status"></div>
       </div>
@@ -199,12 +198,26 @@
       <div class="s-body s-tab-pane hidden" data-pane="transcription">
         <label class="s-label">Провайдер распознавания речи</label>
         <div class="s-seg s-seg-wrap" id="stt-provider-seg">
-          <button data-stt-provider="auto">Авто</button>
-          <button data-stt-provider="local">Локально</button>
-          <button data-stt-provider="openai">OpenAI</button>
-          <button data-stt-provider="custom">Custom</button>
+          <button data-stt-provider="local">Local Whisper</button>
+          <button data-stt-provider="openai">OpenAI API</button>
+          <button data-stt-provider="custom">Свой сервер</button>
         </div>
-        <div class="s-note">Local mode keeps microphone and meeting audio on this computer. It never silently falls back to a cloud transcription provider. Custom sends audio to the Base URL and Custom key set on the API Keys tab (requires both).</div>
+        <div id="stt-provider-note" class="s-note"></div>
+
+        <div id="stt-openai-settings" class="stt-provider-settings hidden">
+          <label class="s-label">OpenAI Speech-to-Text</label>
+          <div class="s-field"><span>API key</span><input id="stt-key-openai" type="password" placeholder="sk-..." autocomplete="off" /></div>
+          <div class="s-field"><span>Модель</span><input id="stt-model-openai" type="text" placeholder="whisper-1" autocomplete="off" /></div>
+          <div class="s-note">Ключ используется только для распознавания речи через OpenAI Audio API.</div>
+        </div>
+
+        <div id="stt-custom-settings" class="stt-provider-settings hidden">
+          <label class="s-label">Собственный сервер распознавания</label>
+          <div class="s-field"><span>Base URL</span><input id="stt-base-url" type="url" placeholder="http://127.0.0.1:18789/v1" autocomplete="off" spellcheck="false" /></div>
+          <div class="s-field"><span>API key</span><input id="stt-key-custom" type="password" placeholder="обязательно" autocomplete="off" /></div>
+          <div class="s-field"><span>Модель</span><input id="stt-model-custom" type="text" placeholder="whisper-1" autocomplete="off" /></div>
+          <div class="s-note">Сервер должен поддерживать совместимый с OpenAI маршрут <code>/audio/transcriptions</code>.</div>
+        </div>
 
         <label class="s-label">Звук встречи <span class="s-hint">распознавать собеседников</span></label>
         <div class="s-seg" id="meeting-audio-seg">
@@ -213,10 +226,14 @@
         </div>
         <div class="s-note" id="meeting-audio-note"></div>
 
-        <div class="whisper-card">
+        <div id="stt-local-settings" class="whisper-card">
           <div class="whisper-runtime-row">
             <span class="s-label">Движок whisper.cpp</span>
             <span id="whisper-runtime-status" class="whisper-badge">Проверка…</span>
+          </div>
+          <div id="whisper-runtime-help" class="s-note">Модель хранит данные для распознавания, а движок запускает её. Для локального распознавания нужны оба компонента.</div>
+          <div class="whisper-actions">
+            <button id="whisper-runtime-prepare" type="button" class="s-action primary">Подготовить движок</button>
           </div>
 
           <label class="s-label" for="whisper-model">Локальная модель</label>
@@ -252,10 +269,7 @@
 
         <div class="s-status" id="whisper-status"></div>
 
-        <label class="s-label">Слайды встречи <span class="s-hint">включается вручную · хранится только в памяти</span></label>
-        <div class="s-field"><span>Отслеживать слайды</span><input id="slides-enabled" type="checkbox" style="width:auto;" /></div>
-        <div class="s-field"><span>Интервал проверки (мс)</span><input id="slides-interval" type="number" min="1500" max="15000" step="500" value="3000" /></div>
-        <div class="s-note">Проверяет изменение изображения каждые несколько секунд и описывает только новый стабильный слайд. Снимки не сохраняются.</div>
+        <div class="s-note">Экран не захватывается в фоне. Снимок создаётся только по кнопке «Снимок экрана» и удаляется после ответа.</div>
       </div>
 
       <!-- Tab: Style -->
@@ -275,6 +289,11 @@
 
       <!-- Tab: Appearance -->
       <div class="s-body s-tab-pane hidden" data-pane="appearance">
+        <label class="s-label" for="screen-display">Экран для снимка</label>
+        <select id="screen-display" class="s-select">
+          <option value="cursor">Экран, на котором находится курсор</option>
+        </select>
+        <div class="s-note">Если подключено несколько мониторов, M2A сделает снимок только выбранного экрана. Захват выполняется исключительно после нажатия кнопки.</div>
         <label class="s-label" for="s-opacity-slider">Прозрачность <span class="s-hint">насколько виден оверлей</span></label>
         <div class="s-opacity-row">
           <input type="range" id="s-opacity-slider" min="20" max="100" step="1" value="100" />
@@ -283,6 +302,68 @@
       </div>
 
 
+    </div>
+  </div>
+
+  <!-- Context belongs to the current chat session, not to global settings. -->
+  <div id="context-scrim" class="hidden">
+    <div id="session-context-panel" class="glass">
+      <div class="s-head">
+        <div>
+          <div class="s-title">Контекст текущей сессии</div>
+          <div class="s-note">Используется только в этом чате и не сохраняется в общих настройках.</div>
+        </div>
+        <button id="session-context-close" class="s-close">Готово</button>
+      </div>
+
+      <div class="s-body session-context-body">
+        <label class="s-label" for="session-context-title">Тема и цель встречи</label>
+        <div class="s-field context-wide-field">
+          <input id="session-context-title" type="text" maxlength="300" placeholder="Например: собеседование на Senior Backend Developer" autocomplete="off" />
+        </div>
+
+        <label class="s-label" for="session-context-notes">Заметки, инструкции и примеры</label>
+        <textarea id="session-context-notes" rows="7" maxlength="10000" placeholder="Что обсуждаем, какие факты учитывать, примеры желаемых ответов, ограничения и термины…"></textarea>
+
+        <label class="s-label">Файлы <span class="s-hint">PDF, DOCX, TXT, MD, CSV, JSON, HTML</span></label>
+        <div class="context-source-list" id="session-context-files"></div>
+        <div class="whisper-actions">
+          <button id="session-context-add-files" type="button" class="s-action primary">Добавить файлы…</button>
+        </div>
+
+        <label class="s-label" for="session-context-url">Ссылки для разбора</label>
+        <div class="context-url-row">
+          <input id="session-context-url" type="url" placeholder="https://…" autocomplete="off" spellcheck="false" />
+          <button id="session-context-add-url" type="button" class="s-action">Загрузить</button>
+        </div>
+        <div class="context-source-list" id="session-context-links"></div>
+
+        <div class="s-note">Материалы отправляются выбранному AI только вместе с запросами этой сессии. Они очищаются при завершении сессии, очистке истории или перезапуске M2A.</div>
+        <div class="context-footer">
+          <div id="session-context-status" class="s-status"></div>
+          <button id="session-context-clear" type="button" class="s-action danger">Очистить контекст</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Persisted meeting history. -->
+  <div id="meetings-scrim" class="hidden">
+    <div id="meetings-panel" class="glass">
+      <div class="s-head">
+        <div>
+          <div class="s-title">Сохранённые сессии</div>
+          <div class="s-note">Расшифровки и заметки хранятся локально на этом компьютере.</div>
+        </div>
+        <button id="meetings-close" class="s-close">Готово</button>
+      </div>
+      <div class="meetings-search-row">
+        <input id="meetings-search" type="search" placeholder="Поиск по названию, итогам и расшифровке…" autocomplete="off" />
+      </div>
+      <div class="meetings-layout">
+        <div id="meetings-list" class="meetings-list"></div>
+        <div id="meeting-detail" class="meeting-detail"><div class="meetings-empty">Выберите сессию слева.</div></div>
+      </div>
     </div>
   </div>
 

@@ -42,7 +42,6 @@ function loadAppLink({ dialogResponse } = {}) {
 const SETTINGS = {
   provider: 'openai',
   smart: true,
-  resumeContext: 'Mann Bellani — Texas A&M, worked at …',
   apiKeys: { openai: 'sk-proj-realkeyvaluehere', anthropic: '', gemini: 'AIzaSyRealKey', nvidia: '' },
   models: { openai: { fast: 'gpt-4o-mini', smart: 'gpt-4o' } },
 };
@@ -93,7 +92,6 @@ test('never exposes transcript text, résumé or API keys', () => {
 test('reports which keys are set without reporting them', () => {
   const state = describeState(snapshot());
   assert.deepEqual(state.hasKey, { openai: true, anthropic: false, gemini: true, nvidia: false });
-  assert.equal(state.hasResumeContext, true);
 });
 
 test('surfaces transcription being silently dead', () => {

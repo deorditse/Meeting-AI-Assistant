@@ -1,5 +1,5 @@
-// Screenshot via native screencapture on macOS, falling back to desktopCapturer (main process).
-// The first call can trigger the system permission prompt for the app.
+// Screenshot through Electron first so macOS attributes Screen Recording access
+// to the signed M2A bundle. The native utility is only a compatibility fallback.
 const { desktopCapturer, screen, nativeImage } = require('electron');
 const { execFile } = require('child_process');
 const fs = require('fs');
@@ -37,10 +37,13 @@ function encodeScreenshot(img, { maxLongEdge = MAX_LONG_EDGE_PX, quality = JPEG_
  * Bypasses ScreenCaptureKit/desktopCapturer empty thumbnail issues on macOS
  * and returns a NativeImage, or null if capture failed.
  */
-function captureMacNative() {
+function captureMacNative(displayNumber) {
   return new Promise((resolve) => {
     const tmpPath = path.join(os.tmpdir(), `m2a_capture_${Date.now()}_${Math.random().toString(36).slice(2)}.png`);
-    execFile('/usr/sbin/screencapture', ['-x', '-t', 'png', tmpPath], (err) => {
+    const args = ['-x', '-t', 'png'];
+    if (Number.isInteger(displayNumber) && displayNumber > 0) args.push('-D', String(displayNumber));
+    args.push(tmpPath);
+    execFile('/usr/sbin/screencapture', args, (err) => {
       if (err) return resolve(null);
       try {
         if (!fs.existsSync(tmpPath)) return resolve(null);
@@ -57,25 +60,43 @@ function captureMacNative() {
   });
 }
 
-async function captureScreenshot() {
-  if (process.platform === 'darwin') {
-    const macImg = await captureMacNative();
-    if (macImg) return encodeScreenshot(macImg);
+function resolveDisplay(displayId = 'cursor') {
+  const displays = screen.getAllDisplays();
+  if (!displays.length) return null;
+  if (displayId && displayId !== 'cursor') {
+    const selected = displays.find((display) => String(display.id) === String(displayId));
+    if (selected) return { display: selected, displayNumber: displays.indexOf(selected) + 1 };
   }
-
-  const primary = screen.getPrimaryDisplay();
-  const { width, height } = primary.size;
-  const scale = primary.scaleFactor || 1;
-  const sources = await desktopCapturer.getSources({
-    types: ['screen'],
-    thumbnailSize: { width: Math.floor(width * scale), height: Math.floor(height * scale) }
-  });
-  if (!sources.length) return null;
-  // Prefer the primary display source.
-  const src = sources.find((s) => String(s.display_id) === String(primary.id)) || sources[0];
-  const img = src.thumbnail;
-  if (!img || img.isEmpty()) return null;
-  return encodeScreenshot(img); // data:image/jpeg;base64,...
+  const cursor = typeof screen.getCursorScreenPoint === 'function' ? screen.getCursorScreenPoint() : null;
+  const selected = cursor && typeof screen.getDisplayNearestPoint === 'function'
+    ? screen.getDisplayNearestPoint(cursor)
+    : screen.getPrimaryDisplay();
+  return { display: selected, displayNumber: displays.findIndex((display) => String(display.id) === String(selected.id)) + 1 };
 }
 
-module.exports = { captureScreenshot, encodeScreenshot, captureMacNative, MAX_LONG_EDGE_PX, JPEG_QUALITY, MAX_DATA_URL_BYTES };
+async function captureScreenshot(displayId = 'cursor') {
+  const resolved = resolveDisplay(displayId);
+  if (!resolved) return null;
+  const target = resolved.display;
+  try {
+    const { width, height } = target.size;
+    const scale = target.scaleFactor || 1;
+    const sources = await desktopCapturer.getSources({
+      types: ['screen'],
+      thumbnailSize: { width: Math.floor(width * scale), height: Math.floor(height * scale) }
+    });
+    const src = sources.find((s) => String(s.display_id) === String(target.id)) || sources[0];
+    const img = src && src.thumbnail;
+    if (img && !img.isEmpty()) return encodeScreenshot(img);
+  } catch (_) {
+    // The native fallback below also handles older Electron/macOS combinations.
+  }
+
+  if (process.platform === 'darwin') {
+    const macImg = await captureMacNative(resolved.displayNumber);
+    if (macImg) return encodeScreenshot(macImg);
+  }
+  return null;
+}
+
+module.exports = { captureScreenshot, encodeScreenshot, captureMacNative, resolveDisplay, MAX_LONG_EDGE_PX, JPEG_QUALITY, MAX_DATA_URL_BYTES };
