@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "types": ["vite/client"],
+    "baseUrl": ".",
+    "paths": {
+      "@app": ["./frontend/src/app"],
+      "@app/*": ["./frontend/src/app/*"],
+      "@pages": ["./frontend/src/pages"],
+      "@pages/*": ["./frontend/src/pages/*"],
+      "@shared": ["./frontend/src/shared"],
+      "@shared/*": ["./frontend/src/shared/*"]
+    },
+    "allowJs": true,
+    "checkJs": false,
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedSideEffectImports": true
+  },
+  "include": ["frontend/src"]
+}

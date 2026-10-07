@@ -1,0 +1,1 @@
+export { MeetingAssistantView } from './MeetingAssistantView';

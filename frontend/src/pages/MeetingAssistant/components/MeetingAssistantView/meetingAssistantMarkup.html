@@ -1,0 +1,318 @@
+<div id="app">
+    <!-- Dedicated drag handle / top bar -->
+    <div id="toolbar">
+      <div class="drag-pill" title="Перетащить окно">
+        <span class="drag-dots" aria-hidden="true"></span>
+        <span class="drag-label">Переместить</span>
+      </div>
+      <button class="tb-logo" id="logo-btn" title="Как пользоваться M2A" aria-label="Как пользоваться M2A"></button>
+      <button class="tb-settings" id="tb-settings-btn" title="Настройки" aria-label="Настройки"></button>
+      <div class="tb-divider"></div>
+      <button class="tb-hide" id="hide-btn" title="Скрыть" aria-label="Скрыть"><span class="chev"></span><span class="tb-hide-label">Скрыть</span></button>
+      <div class="tb-divider"></div>
+      <button class="tb-stop" id="stop-btn" title="Начать сессию" aria-label="Начать сессию">
+        <span class="ic"></span><span class="tb-stop-label">Начать сессию</span>
+      </button>
+      <div class="tb-divider"></div>
+      <div class="tb-opacity-wrap">
+        <button class="tb-opacity" id="opacity-btn" title="Прозрачность" aria-label="Прозрачность" aria-expanded="false">
+          <span class="ic"></span>
+        </button>
+        <div id="opacity-popover" class="opacity-popover hidden">
+          <div class="opacity-label">Прозрачность</div>
+          <div class="opacity-row">
+            <input type="range" id="tb-opacity-slider" min="20" max="100" step="1" value="100" />
+            <span id="tb-opacity-value">100%</span>
+          </div>
+        </div>
+      </div>
+      <div class="tb-divider"></div>
+      <button class="tb-quit" id="quit-btn" title="Выйти из M2A" aria-label="Выйти из M2A"></button>
+    </div>
+
+    <!-- Main assistant panel -->
+    <div id="panel-wrap">
+      <span id="live-dot" class="off"></span>
+      <div id="stt-status" class="stt-status stt-disconnected">Распознавание выключено</div>
+      <div id="panel" class="glass no-drag">
+
+        <!-- Two-column layout: responses (left) + live transcript sidebar (right) -->
+        <div id="panel-columns">
+
+          <!-- Left column: AI responses -->
+          <div id="panel-main">
+            <div id="messages"></div>
+
+            <div id="action-row">
+              <button class="act act-primary" data-mode="say"
+                title="Предлагает ответ по ходу разговора">
+                <span class="ic"></span><span>Что мне ответить?</span>
+                <span class="shortcut-hint" id="say-shortcut-hint"></span>
+              </button>
+              <span class="sep">•</span>
+              <button class="act act-secondary" data-mode="assist"
+                title="Анализирует экран и разговор">
+                <span class="ic"></span><span>Умная помощь</span>
+                <span class="shortcut-hint" id="assist-shortcut-hint"></span>
+              </button>
+              <span class="sep">•</span>
+              <button class="act" data-mode="recap"><span class="ic"></span><span>Итоги</span></button>
+            </div>
+
+            <div id="composer">
+              <div id="input-area">
+                <div id="placeholder">Спросите об экране или разговоре; <span class="keycap">⌘</span><span class="keycap">⇧</span><span class="keycap">⏎</span> — умная помощь</div>
+                <textarea id="input" rows="1" spellcheck="false"></textarea>
+              </div>
+              <div id="composer-bottom">
+                <button id="smart-toggle" class="smart-pill"><span class="ic"></span><span>Умный режим</span></button>
+                <button id="history-btn" class="history-btn" title="Показать расшифровку сессии"><span class="ic"></span><span>История</span></button>
+                <button id="more-btn" class="more-btn" title="Настройки"></button>
+                <div class="spacer"></div>
+                <button id="send-btn" title="Отправить"></button>
+              </div>
+            </div>
+          </div>
+
+        </div><!-- /panel-columns -->
+      </div>
+
+      <!-- Transcript history sidebar — slides out from behind the panel's right edge -->
+      <div id="transcript-sidebar" class="transcript-sidebar">
+        <div class="ts-header">
+          <span class="ts-title">История распознавания</span>
+          <button class="ts-close-btn" id="close-sidebar-btn" title="Закрыть историю">✕</button>
+        </div>
+        <div id="ts-list" class="ts-list">
+          <div class="ts-placeholder">Здесь появится расшифровка разговора.</div>
+        </div>
+        <div class="ts-footer">
+          <button class="ts-clear-btn" id="clear-transcript-btn" title="Очистить историю">Очистить</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings -->
+  <div id="settings-scrim" class="hidden">
+    <div id="settings" class="glass">
+      <div class="s-head">
+        <div class="s-title">Настройки</div>
+        <button id="s-close" class="s-close">Готово</button>
+      </div>
+
+      <!-- Tab bar -->
+      <div class="s-tabs">
+        <button class="s-tab on" data-tab="keys">🔑 Провайдер</button>
+        <button class="s-tab" data-tab="transcription">🔉 Аудио</button>
+        <button class="s-tab" data-tab="style">✨ Стиль</button>
+        <button class="s-tab" data-tab="appearance">🌗 Вид</button>
+      </div>
+
+      <!-- Tab: Keys -->
+      <div class="s-body s-tab-pane" data-pane="keys">
+        <label class="s-label">Провайдер</label>
+        <div class="s-seg" id="provider-seg">
+          <button data-provider="publik" id="provider-publik" class="hidden">publik API <span class="s-default-badge">default</span></button>
+          <button data-provider="codex">Codex подписка</button>
+          <button data-provider="claudeCode">Claude Code подписка</button>
+          <button data-provider="cerebras">Cerebras</button>
+          <button data-provider="openai">OpenAI</button>
+          <button data-provider="anthropic">Anthropic</button>
+          <button data-provider="gemini">Gemini</button>
+          <button data-provider="groq">Groq</button>
+          <button data-provider="custom">Custom</button>
+          <button data-provider="ollama">Ollama</button>
+          <button data-provider="minimax">MiniMax</button>
+          <button data-provider="deepseek">DeepSeek</button>
+          <button data-provider="azure">Azure AI</button>
+        </div>
+
+        <div id="cli-subscription-settings" class="s-note hidden"></div>
+        <label class="s-label">API-ключи и URL <span class="s-hint">хранятся только локально</span></label>
+        <div class="s-field" data-key-for="cerebras"><span>Cerebras</span><input id="key-cerebras" type="password" placeholder="csk-..." autocomplete="off" /></div>
+        <div class="s-field" data-key-for="openai"><span>OpenAI</span><input id="key-openai" type="password" placeholder="sk-..." autocomplete="off" /></div>
+        <div class="s-field" data-key-for="anthropic"><span>Anthropic</span><input id="key-anthropic" type="password" placeholder="sk-ant-..." autocomplete="off" /></div>
+        <div class="s-field" data-key-for="gemini"><span>Gemini</span><input id="key-gemini" type="password" placeholder="AIza..." autocomplete="off" /></div>
+        <div class="s-field" data-key-for="deepgram"><span>Deepgram</span><input id="key-deepgram" type="password" placeholder="dg-..." autocomplete="off" /></div>
+        <div class="s-field" data-key-for="groq"><span>Groq</span><input id="key-groq" type="password" placeholder="gsk_..." autocomplete="off" /></div>
+        <div class="s-field" data-key-for="custom"><span>Custom</span><input id="key-custom" type="password" placeholder="optional" autocomplete="off" /></div>
+        <div class="s-field" data-key-for="minimax"><span>MiniMax</span><input id="key-minimax" type="password" placeholder="MiniMax API key" autocomplete="off" /></div>
+
+        <div id="minimax-region-settings" class="hidden">
+          <label class="s-label">MiniMax region <span class="s-hint">keys are region-bound — a Global key will 401 against China, and vice versa</span></label>
+          <div class="s-seg" id="minimax-region-seg">
+            <button data-region="global_en">Global</button>
+            <button data-region="cn_zh">China</button>
+          </div>
+        </div>
+
+        <div id="custom-endpoint-settings" class="hidden">
+          <label class="s-label" for="base-url">Custom endpoint <span class="s-hint">OpenAI-compatible chat API</span></label>
+          <div class="s-field"><span>Base URL</span><input id="base-url" type="url" placeholder="http://127.0.0.1:18789/v1" autocomplete="off" spellcheck="false" /></div>
+          <div class="s-help">Your Custom key and LLM requests are sent to this URL. To also use it for speech-to-text, pick Custom on the Audio tab — otherwise transcription uses OpenAI or Groq.</div>
+        </div>
+
+        <!-- publik API: the packaged-build default. Text and buttons are filled by
+             renderPublikBlock() from publik:state so the copy has one source. -->
+        <div id="publik-settings" class="publik-card hidden">
+          <div class="publik-line" id="publik-status-note">Not connected</div>
+          <div class="publik-line warn hidden" id="publik-low-note"></div>
+          <div class="s-note" id="publik-cost-note"></div>
+          <details class="publik-why" id="publik-why">
+            <summary id="publik-why-summary">Why it costs money</summary>
+            <div class="s-note" id="publik-why-text"></div>
+          </details>
+          <div class="s-note" id="publik-data-note"></div>
+          <div class="whisper-actions">
+            <button id="publik-setup" class="s-action hidden">Set up publik API</button>
+            <button id="publik-link" class="s-action primary hidden">Link this computer &amp; pick a plan</button>
+            <button id="publik-add-credit" class="s-action hidden">Add a plan or pack</button>
+            <button id="publik-reconnect" class="s-action hidden">Reconnect</button>
+            <button id="publik-pricing" class="s-action">How pricing works</button>
+            <button id="publik-byo" class="s-action">Use my own key instead</button>
+            <button id="publik-disconnect" class="s-action danger hidden">Disconnect publik API</button>
+          </div>
+        </div>
+        <div class="s-field" data-key-for="ollama"><span>Ollama URL</span><input id="key-ollama" type="text" placeholder="http://localhost:11434" autocomplete="off" /></div>
+        <div class="s-field" data-key-for="deepseek"><span>DeepSeek</span><input id="key-deepseek" type="password" placeholder="sk-..." autocomplete="off" /></div>
+        <div class="s-field" data-key-for="azure"><span>Azure AI Foundry</span><input id="key-azure" type="password" placeholder="azure key or Entra token" autocomplete="off" /></div>
+
+        <div id="azure-endpoint-settings" class="hidden">
+          <label class="s-label" for="azure-endpoint">Azure endpoint <span class="s-hint">Azure OpenAI: https://&lt;resource&gt;.openai.azure.com/openai · AI Foundry: https://&lt;host&gt;.cognitiveservices.azure.com (m2a adds /openai/v1)</span></label>
+          <div class="s-field"><span>Endpoint</span><input id="azure-endpoint" type="text" placeholder="https://host.cognitiveservices.azure.com" autocomplete="off" /></div>
+        </div>
+
+        <div id="provider-model-settings">
+          <label class="s-label">Модели <span class="s-hint">пусто = модель из настроек CLI</span></label>
+          <div class="s-field"><span>Быстрая</span><input id="model-fast" type="text" autocomplete="off" /></div>
+          <div class="s-field"><span>Умная</span><input id="model-smart" type="text" autocomplete="off" /></div>
+        </div>
+
+        <label class="s-label">Assistant access <span class="s-hint">programs allowed to see what m2a is doing</span></label>
+        <div class="s-callers" id="applink-callers"></div>
+
+        <div class="s-status" id="s-status"></div>
+      </div>
+
+      <!-- Tab: Transcription -->
+      <div class="s-body s-tab-pane hidden" data-pane="transcription">
+        <label class="s-label">Провайдер распознавания речи</label>
+        <div class="s-seg s-seg-wrap" id="stt-provider-seg">
+          <button data-stt-provider="auto">Авто</button>
+          <button data-stt-provider="local">Локально</button>
+          <button data-stt-provider="openai">OpenAI</button>
+          <button data-stt-provider="custom">Custom</button>
+        </div>
+        <div class="s-note">Local mode keeps microphone and meeting audio on this computer. It never silently falls back to a cloud transcription provider. Custom sends audio to the Base URL and Custom key set on the API Keys tab (requires both).</div>
+
+        <label class="s-label">Звук встречи <span class="s-hint">распознавать собеседников</span></label>
+        <div class="s-seg" id="meeting-audio-seg">
+          <button data-meeting-audio="off">Выкл.</button>
+          <button data-meeting-audio="on">Вкл.</button>
+        </div>
+        <div class="s-note" id="meeting-audio-note"></div>
+
+        <div class="whisper-card">
+          <div class="whisper-runtime-row">
+            <span class="s-label">Движок whisper.cpp</span>
+            <span id="whisper-runtime-status" class="whisper-badge">Проверка…</span>
+          </div>
+
+          <label class="s-label" for="whisper-model">Локальная модель</label>
+          <select id="whisper-model" class="s-select"></select>
+          <div id="whisper-model-detail" class="s-note"></div>
+
+          <div id="whisper-progress-wrap" class="whisper-progress-wrap hidden">
+            <progress id="whisper-progress" max="100" value="0"></progress>
+            <span id="whisper-progress-label">0%</span>
+          </div>
+
+          <div class="whisper-actions">
+            <button id="whisper-download" class="s-action">Скачать</button>
+            <button id="whisper-cancel" class="s-action hidden">Отмена</button>
+            <button id="whisper-import" class="s-action">Импорт…</button>
+            <button id="whisper-delete" class="s-action danger" disabled>Удалить</button>
+          </div>
+
+          <div class="s-field">
+            <span>Язык</span>
+            <select id="whisper-language" class="s-select compact">
+              <option value="auto">Автоопределение</option>
+              <option value="ru">Русский</option>
+              <option value="en">Английский</option>
+            </select>
+          </div>
+          <div class="s-field">
+            <span>Потоки CPU</span>
+            <input id="whisper-threads" type="number" min="0" max="64" step="1" value="0" />
+          </div>
+          <div class="s-note">0 — значение whisper.cpp по умолчанию. Модели с суффиксом .en всегда распознают только английский.</div>
+        </div>
+
+        <div class="s-status" id="whisper-status"></div>
+
+        <label class="s-label">Слайды встречи <span class="s-hint">включается вручную · хранится только в памяти</span></label>
+        <div class="s-field"><span>Отслеживать слайды</span><input id="slides-enabled" type="checkbox" style="width:auto;" /></div>
+        <div class="s-field"><span>Интервал проверки (мс)</span><input id="slides-interval" type="number" min="1500" max="15000" step="500" value="3000" /></div>
+        <div class="s-note">Проверяет изменение изображения каждые несколько секунд и описывает только новый стабильный слайд. Снимки не сохраняются.</div>
+      </div>
+
+      <!-- Tab: Style -->
+      <div class="s-body s-tab-pane hidden" data-pane="style">
+        <label class="s-label">Правила для AI <span class="s-hint">как оформлять ответы</span></label>
+        <textarea id="ai-rules" rows="10" spellcheck="false" maxlength="2000" placeholder="Например:
+- Отвечай 2–3 короткими пунктами.
+- Пиши естественно, от первого лица.
+- Объясняй профессиональные термины.
+- Не начинай ответ со слова «Я».
+"></textarea>
+        <div class="s-counter"><span id="ai-rules-count">0</span> / 2000</div>
+        <div class="s-hint-block">
+          Эти правила задают <strong>стиль</strong> ответа. Пишите по одному требованию в строке. Они применяются ко всем режимам, кроме решения задач по программированию. Правила хранятся локально и передаются только выбранному AI-провайдеру вместе с запросом.
+        </div>
+      </div>
+
+      <!-- Tab: Appearance -->
+      <div class="s-body s-tab-pane hidden" data-pane="appearance">
+        <label class="s-label" for="s-opacity-slider">Прозрачность <span class="s-hint">насколько виден оверлей</span></label>
+        <div class="s-opacity-row">
+          <input type="range" id="s-opacity-slider" min="20" max="100" step="1" value="100" />
+          <span id="s-opacity-value">100%</span>
+        </div>
+      </div>
+
+
+    </div>
+  </div>
+
+  <!-- First-run tutorial / walkthrough -->
+  <div id="onboard-scrim" class="hidden">
+    <div id="onboard" class="glass">
+      <div class="ob-dots" id="ob-dots"></div>
+      <div class="ob-icon" id="ob-icon"></div>
+      <div class="ob-title" id="ob-title"></div>
+      <div class="ob-body" id="ob-body"></div>
+      <div class="ob-buttons" id="ob-buttons"></div>
+      <div class="ob-actions">
+        <button id="ob-skip" class="ob-ghost">Пропустить</button>
+        <div class="spacer"></div>
+        <button id="ob-back" class="ob-ghost">Назад</button>
+        <button id="ob-next" class="ob-primary">Далее</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Assistant access request. Shown in-window rather than as a native dialog:
+       m2a hides its dock icon, so an OS panel never comes forward and cannot be
+       clicked. -->
+  <div id="consent-scrim" class="hidden">
+    <div id="consent" class="glass">
+      <div class="cs-title" id="cs-title"></div>
+      <div class="cs-body" id="cs-body"></div>
+      <div class="cs-actions">
+        <button id="cs-deny" class="ob-ghost">Не разрешать</button>
+        <button id="cs-allow" class="ob-primary">Разрешить</button>
+      </div>
+    </div>
+  </div>

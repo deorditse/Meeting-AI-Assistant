@@ -1,0 +1,65 @@
+{
+  "name": "meeting-ai-assistant",
+  "version": "0.2.4",
+  "description": "M2A - Meeting AI Assistant: a cross-platform AI overlay for meetings, interviews, and screen-aware assistance.",
+  "license": "GPL-3.0-or-later",
+  "author": "M2A contributors",
+  "main": "main.js",
+  "scripts": {
+    "dev": "concurrently -k -s first \"vite\" \"wait-on http://127.0.0.1:5173 && cross-env M2A_VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .\"",
+    "start": "npm run build:renderer && electron .",
+    "build": "npm run build:renderer",
+    "build:renderer": "tsc -b && vite build",
+    "preview": "vite preview",
+    "test": "node --test test/*.test.js",
+    "postinstall": "node scripts/rename-electron.js",
+    "prepare:whisper": "node scripts/prepare-whisper-runtime.js",
+    "verify:whisper-runtime": "node scripts/verify-whisper-runtime.js",
+    "pack": "npm run build:renderer && electron-builder --dir",
+    "dist": "npm run build:renderer && electron-builder --mac zip --x64 --arm64",
+    "dist:mac": "npm run build:renderer && electron-builder --mac zip --x64 --arm64",
+    "dist:mac:x64": "npm run build:renderer && electron-builder --mac zip --x64",
+    "dist:mac:arm64": "npm run build:renderer && electron-builder --mac zip --arm64",
+    "dist:win": "npm run build:renderer && electron-builder --win",
+    "pack:win": "npm run build:renderer && electron-builder --win --dir",
+    "dist:linux": "npm run build:renderer && electron-builder --linux AppImage --x64",
+    "dist:linux:arm64": "npm run build:renderer && electron-builder --linux AppImage --arm64"
+  },
+  "keywords": [
+    "electron",
+    "overlay",
+    "ai",
+    "assistant",
+    "windows",
+    "cross-platform"
+  ],
+  "devDependencies": {
+    "@types/node": "^25.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^6.0.0",
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
+    "electron": "^33.2.1",
+    "electron-builder": "^26.15.3",
+    "extract-zip": "^2.0.1",
+    "tar": "^7.5.22",
+    "typescript": "^5.9.3",
+    "vite": "^8.0.0",
+    "wait-on": "^9.0.1"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "@google/genai": "^2.12.0",
+    "lucide-static": "^0.468.0",
+    "mammoth": "^1.8.0",
+    "openai": "^4.73.0",
+    "pdf-parse": "^1.1.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "ws": "^8.18.0"
+  }
+}
