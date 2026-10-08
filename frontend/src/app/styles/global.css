@@ -1,8 +1,9 @@
 /* m2a — glassmorphism overlay. Tokens reconstructed from the Cluely screenshot. */
 
 :root {
-  --main-w: 700px;                       /* matches MAIN_W in main.js */
   --side-w: 300px;                       /* matches SIDE_W in main.js */
+  --main-w: calc(100vw - var(--side-w) - var(--side-w));
+  --panel-inset: 38px;
   --bg: #2b013d;
   --panel-bg: #3f3642;
   --accent: #3C83F5;
@@ -69,6 +70,39 @@ html, body {
    a tall panel (long transcript, long response) squeezes the Stop/Hide/Quit
    controls down to nothing and leaves no way to stop listening. */
 #toolbar { flex-shrink: 0; }
+
+/* Resize the visible overlay instead of making the user hunt for the native
+   BrowserWindow edge 300px away in a transparent sidebar strip. */
+.window-resize-handle {
+  position: fixed;
+  z-index: 1000;
+  pointer-events: auto;
+  touch-action: none;
+}
+.resize-n, .resize-s {
+  left: calc(var(--side-w) + var(--panel-inset));
+  width: calc(var(--main-w) - var(--panel-inset) - var(--panel-inset));
+  height: 8px;
+  cursor: ns-resize;
+}
+.resize-n { top: 0; }
+.resize-s { bottom: 0; }
+.resize-e, .resize-w {
+  top: 8px;
+  bottom: 8px;
+  width: 8px;
+  cursor: ew-resize;
+}
+.resize-w { left: calc(var(--side-w) + var(--panel-inset) - 4px); }
+.resize-e { right: calc(var(--side-w) + var(--panel-inset) - 4px); }
+.resize-ne, .resize-se, .resize-sw, .resize-nw {
+  width: 14px;
+  height: 14px;
+}
+.resize-ne { top: 0; right: calc(var(--side-w) + var(--panel-inset) - 7px); cursor: nesw-resize; }
+.resize-se { bottom: 0; right: calc(var(--side-w) + var(--panel-inset) - 7px); cursor: nwse-resize; }
+.resize-sw { bottom: 0; left: calc(var(--side-w) + var(--panel-inset) - 7px); cursor: nesw-resize; }
+.resize-nw { top: 0; left: calc(var(--side-w) + var(--panel-inset) - 7px); cursor: nwse-resize; }
 
 /* ============================ Toolbar pill ============================ */
 #toolbar {
@@ -188,7 +222,7 @@ html, body {
 .mic-perm-actions button.dismiss:hover { background: rgba(255,255,255,0.10); color: var(--tx-2); }
 
 /* ============================ Panel ============================ */
-#panel-wrap { position: relative; margin-top: 12px; width: 624px; }
+#panel-wrap { position: relative; margin-top: 12px; width: calc(100% - var(--panel-inset) - var(--panel-inset)); min-width: 0; }
 button:focus { outline: none; }
 #live-dot {
   position: absolute; top: -3px; left: -5px; z-index: 4;

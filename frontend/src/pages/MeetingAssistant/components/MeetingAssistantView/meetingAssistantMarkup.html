@@ -1,4 +1,15 @@
 <div id="app">
+    <!-- Frameless transparent Electron windows have no reachable native edge:
+         the real edge sits behind the side strips used by transcript history. -->
+    <div class="window-resize-handle resize-n" data-resize-edge="n" aria-hidden="true"></div>
+    <div class="window-resize-handle resize-e" data-resize-edge="e" aria-hidden="true"></div>
+    <div class="window-resize-handle resize-s" data-resize-edge="s" aria-hidden="true"></div>
+    <div class="window-resize-handle resize-w" data-resize-edge="w" aria-hidden="true"></div>
+    <div class="window-resize-handle resize-ne" data-resize-edge="ne" aria-hidden="true"></div>
+    <div class="window-resize-handle resize-se" data-resize-edge="se" aria-hidden="true"></div>
+    <div class="window-resize-handle resize-sw" data-resize-edge="sw" aria-hidden="true"></div>
+    <div class="window-resize-handle resize-nw" data-resize-edge="nw" aria-hidden="true"></div>
+
     <!-- Dedicated drag handle / top bar -->
     <div id="toolbar">
       <div class="drag-pill" title="Перетащить окно">

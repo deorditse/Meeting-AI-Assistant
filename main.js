@@ -309,23 +309,30 @@ async function getWhisperOverview() {
 // the history sidebar can slide out left or right. Must match --main-w/--side-w in
 // frontend/src/app/styles/global.css. Saved windowX is the main column's x, not the window's.
 const MAIN_W = 700, SIDE_W = 300;
+const MIN_MAIN_W = 480, MIN_H = 420;
 
-function saveWindowPosition() {
+function saveWindowGeometry() {
   if (!win || win.isDestroyed()) return;
-  const [x, y] = win.getPosition();
-  store.setSettings({ windowX: x + SIDE_W, windowY: y });
+  const { x, y, width, height } = win.getBounds();
+  store.setSettings({
+    windowX: x + SIDE_W,
+    windowY: y,
+    windowWidth: Math.max(MIN_MAIN_W, width - SIDE_W * 2),
+    windowHeight: Math.max(MIN_H, height)
+  });
 }
 
 function createWindow() {
   const { workArea } = screen.getPrimaryDisplay();
-  const W = SIDE_W + MAIN_W + SIDE_W, H = 600;
-
   const savedSettings = store.getSettings();
-  let startX = Math.round(workArea.x + (workArea.width - MAIN_W) / 2);
+  const mainWidth = Math.max(MIN_MAIN_W, Math.min(Number(savedSettings.windowWidth) || MAIN_W, workArea.width));
+  const H = Math.max(MIN_H, Math.min(Number(savedSettings.windowHeight) || 600, workArea.height));
+  const W = SIDE_W + mainWidth + SIDE_W;
+  let startX = Math.round(workArea.x + (workArea.width - mainWidth) / 2);
   let startY = workArea.y + 6;
 
   if (savedSettings.windowX !== null && savedSettings.windowY !== null) {
-    const clampedX = Math.max(workArea.x - MAIN_W + 100, Math.min(savedSettings.windowX, workArea.x + workArea.width - 100));
+    const clampedX = Math.max(workArea.x - mainWidth + 100, Math.min(savedSettings.windowX, workArea.x + workArea.width - 100));
     // Keep the whole window on screen, not just a 40px sliver of it. The old
     // `- 40` let a 600px-tall window sit at y=607 on a 960px display, pushing
     // the composer and action row off the bottom edge with no way to reach them.
@@ -347,6 +354,8 @@ function createWindow() {
     transparent: true,
     hasShadow: false,
     resizable: true,
+    minWidth: SIDE_W * 2 + MIN_MAIN_W,
+    minHeight: MIN_H,
     skipTaskbar: true,
     alwaysOnTop: true,
     fullscreenable: false,
@@ -396,11 +405,13 @@ function createWindow() {
 
   loadRendererPage(win);
 
-  let moveSaveTimer = null;
-  win.on('moved', () => {
-    clearTimeout(moveSaveTimer);
-    moveSaveTimer = setTimeout(saveWindowPosition, 500);
-  });
+  let geometrySaveTimer = null;
+  const scheduleGeometrySave = () => {
+    clearTimeout(geometrySaveTimer);
+    geometrySaveTimer = setTimeout(saveWindowGeometry, 500);
+  };
+  win.on('moved', scheduleGeometrySave);
+  win.on('resize', scheduleGeometrySave);
 
   win.setTitle('M2A - Meeting AI Assistant');
 
@@ -1276,8 +1287,10 @@ ipcMain.on('mouse:ignore', (_e, v) => { if (win) win.setIgnoreMouseEvents(!!v, {
 // Window dragging is done here rather than with CSS drag regions, which misbehave while the
 // renderer toggles click-through. The window follows the cursor until the renderer says stop.
 let windowDrag = null;
+let windowResize = null;
 ipcMain.on('window:drag-start', () => {
   if (!win || win.isDestroyed()) return;
+  stopWindowResize();
   stopWindowDrag();
   const cursor = screen.getCursorScreenPoint();
   const bounds = win.getBounds();
@@ -1292,11 +1305,48 @@ ipcMain.on('window:drag-start', () => {
 ipcMain.on('window:drag-end', () => {
   if (!windowDrag) return;
   stopWindowDrag();
-  saveWindowPosition();
+  saveWindowGeometry();
 });
 function stopWindowDrag() {
   clearInterval(windowDrag);
   windowDrag = null;
+}
+const RESIZE_EDGES = new Set(['n', 'e', 's', 'w', 'ne', 'se', 'sw', 'nw']);
+ipcMain.on('window:resize-start', (_event, edge) => {
+  if (!win || win.isDestroyed() || !RESIZE_EDGES.has(edge)) return;
+  stopWindowDrag();
+  stopWindowResize();
+  const startCursor = screen.getCursorScreenPoint();
+  const startBounds = win.getBounds();
+  windowResize = {
+    timer: setInterval(() => {
+      if (!win || win.isDestroyed()) { stopWindowResize(); return; }
+      const cursor = screen.getCursorScreenPoint();
+      const dx = cursor.x - startCursor.x;
+      const dy = cursor.y - startCursor.y;
+      let { x, y, width, height } = startBounds;
+      if (edge.includes('e')) width = Math.max(SIDE_W * 2 + MIN_MAIN_W, startBounds.width + dx);
+      if (edge.includes('s')) height = Math.max(MIN_H, startBounds.height + dy);
+      if (edge.includes('w')) {
+        width = Math.max(SIDE_W * 2 + MIN_MAIN_W, startBounds.width - dx);
+        x = startBounds.x + startBounds.width - width;
+      }
+      if (edge.includes('n')) {
+        height = Math.max(MIN_H, startBounds.height - dy);
+        y = startBounds.y + startBounds.height - height;
+      }
+      win.setBounds({ x, y, width, height });
+    }, 16)
+  };
+});
+ipcMain.on('window:resize-end', () => {
+  if (!windowResize) return;
+  stopWindowResize();
+  saveWindowGeometry();
+});
+function stopWindowResize() {
+  if (windowResize) clearInterval(windowResize.timer);
+  windowResize = null;
 }
 ipcMain.on('open-pane', (_e, url) => { shell.openExternal(url).catch(() => {}); });
 ipcMain.on('app:quit', () => app.quit());

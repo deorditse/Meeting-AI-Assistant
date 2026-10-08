@@ -2103,12 +2103,13 @@ export function mountMeetingAssistant() {
   // ---- click-through: only the UI blocks the mouse; empty gaps pass to your screen ----
   let ignoring = null;
   let draggingWindow = false;
+  let resizingWindow = false;
   function setIgnore(v) { if (v !== ignoring) { ignoring = v; m2a.setIgnoreMouse(v); } }
   document.addEventListener('mousemove', (e) => {
     // The window trails the cursor while dragging; going click-through then would drop the release.
-    if (draggingWindow) return;
+    if (draggingWindow || resizingWindow) return;
     const el = document.elementFromPoint(e.clientX, e.clientY);
-    const overUI = !!(el && el.closest && el.closest('#toolbar, #panel-wrap, #transcript-sidebar, #settings-scrim, #context-scrim, #meetings-scrim, #onboard-scrim, #consent-scrim'));
+    const overUI = !!(el && el.closest && el.closest('.window-resize-handle, #toolbar, #panel-wrap, #transcript-sidebar, #settings-scrim, #context-scrim, #meetings-scrim, #onboard-scrim, #consent-scrim'));
     setIgnore(!overUI);
   });
   setIgnore(true); // start fully click-through; hovering the panel re-enables it
@@ -2130,6 +2131,24 @@ export function mountMeetingAssistant() {
     draggingWindow = false;
     toolbar.classList.remove('dragging');
     m2a.windowDragEnd();
+  });
+
+  // Resize from every visible edge and corner. The main process reads the
+  // global cursor, which keeps this stable while the viewport itself changes.
+  document.querySelectorAll('.window-resize-handle').forEach((handle) => {
+    handle.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      handle.setPointerCapture(e.pointerId);
+      resizingWindow = true;
+      setIgnore(false);
+      m2a.windowResizeStart(handle.dataset.resizeEdge);
+    });
+    handle.addEventListener('lostpointercapture', () => {
+      if (!resizingWindow) return;
+      resizingWindow = false;
+      m2a.windowResizeEnd();
+    });
   });
 
   // ---- assistant access request ------------------------------------------

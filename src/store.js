@@ -87,6 +87,10 @@ const DEFAULTS = {
   // Window position
   windowX: null,
   windowY: null,
+  // Size of the visible centre column (the native transparent window also
+  // carries one SIDE_W strip on either side for the transcript drawer).
+  windowWidth: 700,
+  windowHeight: 600,
   models: {
     // Empty means "use the model configured by the signed-in CLI".
     codex: { fast: '', smart: '' },

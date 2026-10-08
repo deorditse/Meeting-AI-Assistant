@@ -26,6 +26,8 @@ contextBridge.exposeInMainWorld('m2a', {
   setIgnoreMouse: (v) => ipcRenderer.send('mouse:ignore', v),
   windowDragStart: () => ipcRenderer.send('window:drag-start'),
   windowDragEnd: () => ipcRenderer.send('window:drag-end'),
+  windowResizeStart: (edge) => ipcRenderer.send('window:resize-start', edge),
+  windowResizeEnd: () => ipcRenderer.send('window:resize-end'),
   clearTranscript: () => ipcRenderer.invoke('transcript:clear'),
   meetingsList: (query = '') => ipcRenderer.invoke('meetings:list', query),
   meetingsGet: (id) => ipcRenderer.invoke('meetings:get', id),
