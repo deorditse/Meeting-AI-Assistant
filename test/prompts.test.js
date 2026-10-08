@@ -24,6 +24,17 @@ test('leetcode mode ignores context block and returns coding prompt', () => {
   assert.ok(!system.includes('IGNORED_CONTEXT'), 'leetcode should not include context block');
 });
 
+test('default prompts require concise Markdown answers and fenced code', () => {
+  for (const name of ['assist', 'say', 'ask', 'answerThis', 'screen']) {
+    const system = MODES[name].buildSystem(null);
+    assert.match(system, /briefly and directly/i, `${name} should request concise answers`);
+    assert.match(system, /Markdown/i, `${name} should request Markdown formatting`);
+    assert.match(system, /fenced Markdown blocks/i, `${name} should request fenced code`);
+  }
+  assert.match(MODES.leetcode.buildSystem(null), /Markdown/i);
+  assert.match(MODES.leetcode.buildSystem(null), /essential details/i);
+});
+
 test('recap is grounded in the transcript and does not presume an interview', () => {
   const system = MODES.recap.buildSystem(null);
   assert.match(system, /actually said|only what is in the transcript/i, 'recap must be grounded in the transcript');

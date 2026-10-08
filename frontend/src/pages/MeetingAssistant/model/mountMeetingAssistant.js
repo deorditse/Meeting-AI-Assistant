@@ -66,27 +66,56 @@ export function mountMeetingAssistant() {
 
   function esc(s) { return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 
-  // minimal, safe markdown: fenced code, bullets, inline code, bold, paragraphs
+  // Safe Markdown subset tailored for compact answers and readable code.
   function renderMarkdown(text) {
     const lines = text.split('\n');
-    let html = '', inCode = false, inList = false, buf = [];
+    let html = '', inCode = false, codeLanguage = '', listType = null, buf = [];
     const flushP = () => { if (buf.length) { html += '<p>' + inline(buf.join(' ')) + '</p>'; buf = []; } };
+    const closeList = () => { if (listType) { html += `</${listType}>`; listType = null; } };
     const inline = (s) => esc(s)
       .replace(/`([^`]+)`/g, '<code>$1</code>')
-      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/~~([^~]+)~~/g, '<del>$1</del>')
+      .replace(/(^|\s)\*([^*]+)\*(?=\s|[.,!?;:]|$)/g, '$1<em>$2</em>');
     for (const raw of lines) {
       const line = raw;
-      if (/^```/.test(line.trim())) {
-        if (!inCode) { flushP(); if (inList) { html += '</ul>'; inList = false; } html += '<pre><code>'; inCode = true; }
-        else { html += '</code></pre>'; inCode = false; }
+      const fence = /^```\s*([\w#+.-]*)/.exec(line.trim());
+      if (fence) {
+        if (!inCode) {
+          flushP(); closeList();
+          codeLanguage = fence[1] || '';
+          const languageClass = codeLanguage ? ` class="language-${esc(codeLanguage)}"` : '';
+          html += '<div class="code-block">' +
+            (codeLanguage ? `<div class="code-language">${esc(codeLanguage)}</div>` : '') +
+            `<pre><code${languageClass}>`;
+          inCode = true;
+        } else {
+          html += '</code></pre></div>';
+          inCode = false;
+          codeLanguage = '';
+        }
         continue;
       }
       if (inCode) { html += esc(line) + '\n'; continue; }
-      if (/^\s*[-*]\s+/.test(line)) { flushP(); if (!inList) { html += '<ul>'; inList = true; } html += '<li>' + inline(line.replace(/^\s*[-*]\s+/, '')) + '</li>'; continue; }
-      if (line.trim() === '') { flushP(); if (inList) { html += '</ul>'; inList = false; } continue; }
+      const heading = /^(#{1,3})\s+(.+)$/.exec(line.trim());
+      if (heading) { flushP(); closeList(); const level = heading[1].length; html += `<h${level}>${inline(heading[2])}</h${level}>`; continue; }
+      if (/^\s*([-*_])(?:\s*\1){2,}\s*$/.test(line)) { flushP(); closeList(); html += '<hr>'; continue; }
+      const bullet = /^\s*[-*+]\s+(.+)$/.exec(line);
+      const numbered = /^\s*\d+[.)]\s+(.+)$/.exec(line);
+      if (bullet || numbered) {
+        flushP();
+        const nextType = bullet ? 'ul' : 'ol';
+        if (listType !== nextType) { closeList(); html += `<${nextType}>`; listType = nextType; }
+        html += '<li>' + inline((bullet || numbered)[1]) + '</li>';
+        continue;
+      }
+      const quote = /^\s*>\s?(.*)$/.exec(line);
+      if (quote) { flushP(); closeList(); html += '<blockquote>' + inline(quote[1]) + '</blockquote>'; continue; }
+      if (line.trim() === '') { flushP(); closeList(); continue; }
+      closeList();
       buf.push(line.trim());
     }
-    flushP(); if (inList) html += '</ul>'; if (inCode) html += '</code></pre>';
+    flushP(); closeList(); if (inCode) html += '</code></pre></div>';
     return html;
   }
 

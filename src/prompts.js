@@ -24,7 +24,9 @@ function applyRules(prompt, aiRules, mode) {
 }
 
 const BASE_RULES =
-  'Always respond in clear, natural Russian. Use another language only when the user explicitly asks or when source-language code and technical terms require it. ';
+  'Always respond in clear, natural Russian. Use another language only when the user explicitly asks or when source-language code and technical terms require it. ' +
+  'Answer briefly and directly: give only the essential information needed right now, without repetition, long introductions, or filler. ' +
+  'Use compact Markdown when it improves readability. Put code in fenced Markdown blocks with the programming language specified. ';
 
 const MODES = {
 
@@ -188,7 +190,7 @@ const MODES = {
       // stay strict regardless of personal style or context.
       return 'You are an expert competitive programmer. The screenshot contains a coding problem. ' +
         'Respond with: (1) a one-line restatement, (2) a short approach, (3) a clean, correct, idiomatic solution in a fenced code block ' +
-        '(use the language shown on screen, else Python), (4) time and space complexity. Explain in clear Russian and keep prose tight.';
+        '(use the language shown on screen, else Python), (4) time and space complexity. Explain in clear Russian, use Markdown, and include only essential details.';
     },
     build() { return 'Solve the coding problem shown in the screenshot.'; }
   }
