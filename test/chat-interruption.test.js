@@ -32,6 +32,16 @@ test('the UI can explicitly stop generation and renders screenshot thumbnails', 
   assert.match(renderer, /user-screen-thumbnail/);
 });
 
+test('screenshot capture does not attach auto-filled transcription text', () => {
+  const root = path.join(__dirname, '..');
+  const main = fs.readFileSync(path.join(root, 'main.js'), 'utf8');
+  const renderer = fs.readFileSync(path.join(root, 'frontend/src/pages/MeetingAssistant/model/mountMeetingAssistant.js'), 'utf8');
+
+  assert.match(main, /const effectiveUserText = mode === 'screen' \? ''/);
+  assert.match(main, /const contextTranscript = mode === 'screen' \? \[\]/);
+  assert.match(renderer, /runMode\(btn\.dataset\.mode, ''\)/);
+});
+
 test('aborting a subscription request terminates its CLI process promptly', async () => {
   const controller = new AbortController();
   const startedAt = Date.now();

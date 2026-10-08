@@ -841,13 +841,17 @@ async function runFeature(mode, userText, excludedTranscriptIds = []) {
   try {
     const settings = store.getSettings();
     const llm = createLLM(settings);
+    // A screenshot action is deliberately isolated from live transcription.
+    // Text in the composer is often auto-filled from STT and is sent only by
+    // the explicit Send action, never as an accidental screenshot caption.
+    const effectiveUserText = mode === 'screen' ? '' : (userText || '');
     const userBubble = mode === 'screen'
-      ? ((userText || '').trim() || null)
+      ? null
       : def.userBubble !== null
       ? def.userBubble
-      : (mode === 'ask' ? userText : mode === 'answerThis' ? `"${(userText || '').slice(0, 60)}${userText && userText.length > 60 ? '…' : ''}"` : null);
-    const contextTranscript = selectTranscript(transcript, excludedTranscriptIds);
-    const category = mode !== 'leetcode' ? detectCategory(contextTranscript) : null;
+      : (mode === 'ask' ? effectiveUserText : mode === 'answerThis' ? `"${effectiveUserText.slice(0, 60)}${effectiveUserText.length > 60 ? '…' : ''}"` : null);
+    const contextTranscript = mode === 'screen' ? [] : selectTranscript(transcript, excludedTranscriptIds);
+    const category = !['screen', 'leetcode'].includes(mode) ? detectCategory(contextTranscript) : null;
     if (!llm.ready) {
       const message = llm.configurationError || ('Завершите настройку провайдера ' + settings.provider + '. Модель: ' + (llm.model || 'не выбрана') + '.');
       if (settings.provider === publik.PUBLIK_PROVIDER) {
@@ -919,7 +923,7 @@ async function runFeature(mode, userText, excludedTranscriptIds = []) {
     const settingsForPrompt = store.getSettings();
     let contextBlock = sessionContextService.buildPromptBlock();
     const system = def.buildSystem ? def.buildSystem(contextBlock, settingsForPrompt.aiRules || '') : (def.system || '');
-    const built = def.build({ transcript: contextTranscript, userText: userText || '' });
+    const built = def.build({ transcript: contextTranscript, userText: effectiveUserText });
 
     // Watchdog: a provider that stalls mid-stream would otherwise hang the await forever,
     // leaving state.busy = true and wedging every later question until an app restart.

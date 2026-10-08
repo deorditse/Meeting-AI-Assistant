@@ -192,8 +192,9 @@ export function mountMeetingAssistant() {
 
   document.querySelectorAll('.act').forEach((btn) => {
     btn.addEventListener('click', () => {
-      const text = btn.dataset.mode === 'screen' ? ($('#input').value || '').trim() : '';
-      runMode(btn.dataset.mode, text);
+      // The composer can contain an auto-filled transcript. Screenshot capture
+      // sends pixels only; the text is sent only when the user presses Send.
+      runMode(btn.dataset.mode, '');
     });
   });
 
