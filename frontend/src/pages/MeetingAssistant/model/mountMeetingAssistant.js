@@ -60,6 +60,7 @@ export function mountMeetingAssistant() {
   let aiEl = null;       // current streaming <div class="ai-text">
   let caretEl = null;
   let responseCount = 0;
+  let sessionRestored = false;
   const MAX_RESPONSES = 20;
   const excludedTranscriptIds = new Set();
 
@@ -193,6 +194,54 @@ export function mountMeetingAssistant() {
     const raw = aiEl.dataset.raw || '';
     aiEl.innerHTML = renderMarkdown(raw);
     aiEl = null; caretEl = null;
+  }
+
+  function renderRestoredChat(history) {
+    clearMessages();
+    responseCount = 0;
+    for (const item of (Array.isArray(history) ? history : []).slice(-MAX_RESPONSES)) {
+      const group = document.createElement('div');
+      group.className = 'response-group';
+      const sep = document.createElement('div');
+      sep.className = 'response-sep';
+      sep.textContent = new Date(Number(item.ts) || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      group.appendChild(sep);
+      if (item.userImageDataUrl) {
+        const image = document.createElement('img');
+        image.className = 'user-screen-thumbnail';
+        image.src = item.userImageDataUrl;
+        image.alt = 'Снимок экрана из истории';
+        group.appendChild(image);
+      }
+      if (item.userBubble) {
+        const bubble = document.createElement('div');
+        bubble.className = 'user-bubble';
+        bubble.textContent = item.userBubble;
+        group.appendChild(bubble);
+      }
+      if (item.category) {
+        const pill = document.createElement('div');
+        pill.className = 'category-pill';
+        const labels = { general: 'Общее', behavioral: 'Поведенческий', technical: 'Технический', motivation: 'Мотивация', situational: 'Ситуационный', experience: 'Опыт', compensation: 'Компенсация' };
+        pill.textContent = labels[item.category] || item.category;
+        group.appendChild(pill);
+      }
+      const answer = document.createElement('div');
+      answer.className = 'ai-text' + (item.small ? ' small' : '');
+      answer.innerHTML = renderMarkdown(item.assistantText || (item.cancelled ? 'Ответ остановлен.' : ''));
+      group.appendChild(answer);
+      messages.appendChild(group);
+      responseCount++;
+    }
+    messages.scrollTop = messages.scrollHeight;
+  }
+
+  function applyRestoredSettings(next) {
+    if (!next) return;
+    settings = next;
+    smartBtn.classList.toggle('on', Boolean(settings.smart));
+    updateSmartTooltip();
+    fillSettings();
   }
 
   let busyFailsafe = null;
@@ -660,12 +709,7 @@ export function mountMeetingAssistant() {
     await m2a.settingsSet({ smart: settings.smart });
   });
   m2a.on('settings:changed', (next) => {
-    if (!next) return;
-    settings = next;
-    smartBtn.classList.toggle('on', Boolean(settings.smart));
-    updateSmartTooltip();
-    const settingsScrim = document.getElementById('settings-scrim');
-    if (settingsScrim && !settingsScrim.classList.contains('hidden')) fillSettings();
+    applyRestoredSettings(next);
   });
 
   // Hide / collapse
@@ -1417,13 +1461,19 @@ export function mountMeetingAssistant() {
   });
   // Transcript of a meeting resumed at launch: sidebar rows only — no
   // auto-fill of the input box, which is for live speech.
-  m2a.on('transcript:restore', ({ turns }) => {
+  m2a.on('transcript:restore', ({ turns, chatHistory, settings: restoredSettings }) => {
+    sessionRestored = true;
+    applyRestoredSettings(restoredSettings);
+    renderRestoredChat(chatHistory);
     for (const t of turns || []) {
       if (!t || !t.text || t.text.trim().length < 2) continue;
       appendTranscriptHistoryTurn(t.channel, t.text, false, t.id);
     }
   });
-  m2a.on('transcript:replace', ({ turns }) => {
+  m2a.on('transcript:replace', ({ turns, chatHistory, settings: restoredSettings }) => {
+    sessionRestored = true;
+    applyRestoredSettings(restoredSettings);
+    renderRestoredChat(chatHistory);
     clearTranscriptSidebar();
     hardClearSTTFill(false);
     for (const turn of turns || []) {
@@ -2375,7 +2425,7 @@ export function mountMeetingAssistant() {
     }
 
     smartBtn.classList.toggle('on', !!settings.smart);
-    showExample();
+    if (!sessionRestored) showExample();
     syncPlaceholder();
     updateSendButtonState(); // Initialize send button state
 

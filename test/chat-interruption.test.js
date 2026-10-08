@@ -15,7 +15,7 @@ test('a new chat action is allowed while the previous answer is streaming', () =
   assert.match(main, /function cancelActiveFeature\(\)/);
   assert.match(main, /request\.controller\.abort\(\)/);
   assert.match(main, /activeFeature === request/);
-  assert.match(main, /onToken: \(t\) => \{ if \(streamSettled \|\| !isCurrent\(\)\) return;/);
+  assert.match(main, /onToken: \(t\) => \{\s*if \(streamSettled \|\| !isCurrent\(\)\) return;/);
 });
 
 test('the UI can explicitly stop generation and renders screenshot thumbnails', () => {

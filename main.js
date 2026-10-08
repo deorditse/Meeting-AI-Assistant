@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, globalShortcut, screen, session, desktopCapturer, shell, dialog, systemPreferences } = require('electron');
+const { app, BrowserWindow, ipcMain, globalShortcut, screen, session, desktopCapturer, shell, dialog, systemPreferences, nativeImage } = require('electron');
 const path = require('path');
 const os = require('os');
 const store = require('./src/store');
@@ -26,6 +26,7 @@ const { createMeetingStore } = require('./src/meetings');
 const { createMeetingMemory } = require('./src/meeting-memory');
 const { createMeetingHistoryService } = require('./src/application/meeting-history-service');
 const { buildMeetingSessionSnapshot, buildMeetingSessionRestore } = require('./src/application/meeting-session-state');
+const { appendChatMessage } = require('./src/application/chat-history');
 const { registerMeetingHistoryIpc } = require('./src/infrastructure/electron/register-meeting-history-ipc');
 const { createWindowControls } = require('./src/infrastructure/electron/window-controls');
 const { migrateLegacyUserData } = require('./src/user-data-migration');
@@ -234,6 +235,26 @@ function restoreMeetingSessionState(meeting, { notify = true } = {}) {
   return settings;
 }
 
+function screenshotThumbnail(dataUrl) {
+  if (!dataUrl) return '';
+  try {
+    const image = nativeImage.createFromDataURL(dataUrl);
+    if (image.isEmpty()) return '';
+    const thumbnail = image.getSize().width > 360 ? image.resize({ width: 360 }) : image;
+    return `data:image/jpeg;base64,${thumbnail.toJPEG(55).toString('base64')}`;
+  } catch {
+    return '';
+  }
+}
+
+function persistFeatureChat(request, patch = {}) {
+  if (!request?.chatEntry || request.chatPersisted || !meetingMemory?.current || !meetingStore) return;
+  request.chatPersisted = true;
+  const meeting = meetingMemory.current;
+  const chatHistory = appendChatMessage(meeting.chatHistory, { ...request.chatEntry, ...patch });
+  meetingStore.update(meeting.id, { chatHistory });
+}
+
 const meetingHistoryService = createMeetingHistoryService({
   getStore: () => meetingStore,
   getCurrentMeeting: () => meetingMemory?.current || null,
@@ -252,7 +273,12 @@ const meetingHistoryService = createMeetingHistoryService({
     transcript.push(...restored);
     resetSlidesSession();
     restoreMeetingSessionState(meetingMemory.current);
-    send('transcript:replace', { turns: restored, meetingId: id });
+    send('transcript:replace', {
+      turns: restored,
+      meetingId: id,
+      chatHistory: meetingMemory.current.chatHistory || [],
+      settings: store.redactForRenderer(store.getSettings())
+    });
     send('status', { message: `Сессия продолжена; восстановлено реплик: ${restored.length}.` });
     return meetingMemory.current;
   }
@@ -438,14 +464,20 @@ function createWindow() {
   win.webContents.on('did-finish-load', () => {
     win.showInactive();
     win.setTitle('M2A - Meeting AI Assistant');
-    if (restoredTurns.length) {
+    if (meetingMemory?.current) {
       // A meeting was in progress when m2a last exited: put its transcript back
       // in the sidebar so Recap / Follow-up pick up where the conversation was.
       const turns = restoredTurns;
       restoredTurns = [];
-      send('transcript:restore', { turns });
-      const ageMin = Math.max(1, Math.round((Date.now() - turns[turns.length - 1].ts) / 60000));
-      send('status', { message: `Встреча продолжена с момента ${ageMin} мин назад; восстановлено реплик: ${turns.length}.` });
+      send('transcript:restore', {
+        turns,
+        chatHistory: meetingMemory.current.chatHistory || [],
+        settings: store.redactForRenderer(store.getSettings())
+      });
+      if (turns.length) {
+        const ageMin = Math.max(1, Math.round((Date.now() - turns[turns.length - 1].ts) / 60000));
+        send('status', { message: `Встреча продолжена с момента ${ageMin} мин назад; восстановлено реплик: ${turns.length}.` });
+      }
     }
     // Warn about missing content protection on old Windows builds
     if (isWindows && shouldProtect && !WIN_SUPPORTS_CONTENT_PROTECTION) {
@@ -872,6 +904,7 @@ function cancelActiveFeature() {
   const request = activeFeature;
   activeFeature = null;
   request.controller.abort();
+  persistFeatureChat(request, { cancelled: true });
   state.busy = false;
   send('llm:done', { cancelled: true });
   return true;
@@ -967,6 +1000,16 @@ async function runFeature(mode, userText, excludedTranscriptIds = []) {
       small: !!def.small,
       category
     });
+    request.chatEntry = {
+      id: `chat-${request.id}-${Date.now()}`,
+      ts: Date.now(),
+      mode,
+      userBubble: userBubble || (def.needsScreen ? 'Снимок экрана' : ''),
+      userImageDataUrl: def.needsScreen ? screenshotThumbnail(imageDataUrl) : '',
+      assistantText: '',
+      small: !!def.small,
+      category: category || ''
+    };
 
     const settingsForPrompt = store.getSettings();
     let contextBlock = sessionContextService.buildPromptBlock();
@@ -997,7 +1040,12 @@ async function runFeature(mode, userText, excludedTranscriptIds = []) {
           turns: [{ role: 'user', text: built }],
           imageDataUrl,
           signal: request.controller.signal,
-          onToken: (t) => { if (streamSettled || !isCurrent()) return; rearm(); send('llm:token', { text: t }); },
+          onToken: (t) => {
+            if (streamSettled || !isCurrent()) return;
+            rearm();
+            request.chatEntry.assistantText += t;
+            send('llm:token', { text: t });
+          },
           onResponse: settings.provider === publik.PUBLIK_PROVIDER ? (res) => publikNoteHeaders(res && res.headers) : undefined
         }),
         stalled,
@@ -1008,12 +1056,14 @@ async function runFeature(mode, userText, excludedTranscriptIds = []) {
       clearTimeout(watchdog);
     }
     if (!isCurrent()) return;
+    persistFeatureChat(request);
     send('llm:done', {});
     // Streams settle after their headers, so the charge is reconciled from
     // GET /wallet shortly after the answer — one request per answer, debounced.
     if (settings.provider === publik.PUBLIK_PROVIDER) publikScheduleWalletRefresh();
   } catch (e) {
     if (!isCurrent() || (e && e.name === 'AbortError')) return;
+    persistFeatureChat(request, { assistantText: e && e.message ? e.message : String(e) });
     recordEvent({ level: 'error', event: 'llm_failed', msg: e && e.message ? e.message : String(e), frame: 'runFeature', context: { mode, provider: store.getSettings().provider } });
     const action = e && e.action ? e.action : null;
     send('llm:error', { message: e && e.message ? e.message : String(e), action });

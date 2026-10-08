@@ -61,3 +61,18 @@ test('old meetings without chat parameters keep current global chat settings', (
   assert.equal(restored.settingsPatch, null);
   assert.deepEqual(restored.sessionContext, { title: '', notes: '', files: [], links: [] });
 });
+
+test('resume payload restores settings and chat history in the renderer', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const root = path.join(__dirname, '..');
+  const main = fs.readFileSync(path.join(root, 'main.js'), 'utf8');
+  const renderer = fs.readFileSync(path.join(root, 'frontend/src/pages/MeetingAssistant/model/mountMeetingAssistant.js'), 'utf8');
+
+  assert.match(main, /send\('transcript:replace',[\s\S]*chatHistory:[\s\S]*settings:/);
+  assert.match(main, /send\('transcript:restore',[\s\S]*chatHistory:[\s\S]*settings:/);
+  assert.match(renderer, /function renderRestoredChat\(history\)/);
+  assert.match(renderer, /applyRestoredSettings\(restoredSettings\)/);
+  assert.match(renderer, /answer\.innerHTML = renderMarkdown/);
+  assert.match(renderer, /if \(!sessionRestored\) showExample\(\)/);
+});
