@@ -2,11 +2,11 @@
 
 # M2A — Meeting AI Assistant
 
-**An open-source AI copilot that floats over your screen — sees what you see, hears your meetings, and stays hidden from screen shares.**
+**An open-source Russian-first AI copilot for meetings, interviews, and screen-aware help.**
 
-A free, self-hosted alternative to Cluely. Bring your own AI key (OpenAI · Anthropic · Google Gemini · Azure AI Foundry . OpenAI-compatible endpoints).
+Use an existing Codex or Claude Code subscription, an OpenAI or Anthropic API key, or your own OpenAI-compatible server.
 
-<img src="docs/tutorial.png" width="620" alt="m2a first-run tutorial" />
+<img src="docs/m2a-chat.png" width="720" alt="Current M2A chat overlay with a Markdown code answer" />
 
 </div>
 
@@ -23,14 +23,18 @@ m2a floats a small glass panel on top of everything. It takes **three separate i
 
 | Feature | How to trigger | What it uses |
 |---|---|---|
-| **Smart assist** | `⌘` `⇧` `↵` (macOS) or `Ctrl` `Shift` `Enter` (Windows) | your screen + recent conversation |
+| **Smart assist** | `⌘` `⇧` `↵` (macOS) or `Ctrl` `Shift` `Enter` (Windows) | selected recent conversation |
 | **What should I say?** | `⌘` `↵` (macOS) or `Ctrl` `Enter` (Windows) | meeting audio + your mic |
 | **Recap** | button | the whole conversation |
-| **Ask anything** | type + `↵` | your screen + conversation |
-| **Solve a coding problem** | `⌘` `H` (macOS) or `Ctrl` `H` (Windows) | your screen only |
+| **Ask anything** | type + `↵` | your question + selected conversation blocks |
+| **Analyze the screen** | **Screenshot** button | a one-time capture of the selected display |
 | **Smart** toggle | pill in the box | switches to a smarter (slower) model |
 
 It's a copilot for **live meetings** ("what do I say to that?") and **coding problems** (screenshot → full solution), and it's designed to be **invisible in screen shares** so it stays your private assistant.
+
+<div align="center">
+  <img src="docs/m2a-settings.png" width="720" alt="Current M2A appearance settings with opacity and chat text size controls" />
+</div>
 
 ### Platform support
 
@@ -189,8 +193,6 @@ Before a meeting, press **Context** in the session panel (or open **Settings →
 m2a is hidden from most screen-share tools automatically — **Google Meet, Microsoft Teams, and QuickTime need nothing.** **Zoom** has a specific setting that decides whether it respects m2a's "don't capture me" flag:
 
 > **Zoom → Settings → Share Screen → Advanced → Screen capture mode → choose "Advanced capture with window filtering."**
-
-<div align="center"><img src="docs/zoom-setting.png" width="560" alt="Zoom screen capture mode setting" /></div>
 
 **Why:** the *"...with window filtering"* modes tell Zoom to leave out windows that mark themselves as private — which is exactly what m2a does. The **"Advanced capture without window filtering"** mode grabs the raw screen and **will show m2a**, so avoid it.
 
