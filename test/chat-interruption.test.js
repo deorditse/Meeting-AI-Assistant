@@ -42,6 +42,15 @@ test('screenshot capture does not attach auto-filled transcription text', () => 
   assert.match(renderer, /runMode\(btn\.dataset\.mode, ''\)/);
 });
 
+test('excluding a transcript block also removes it from the STT composer', () => {
+  const renderer = fs.readFileSync(path.join(__dirname, '..', 'frontend/src/pages/MeetingAssistant/model/mountMeetingAssistant.js'), 'utf8');
+
+  assert.match(renderer, /function syncComposerWithTranscriptSelection\(\)/);
+  assert.match(renderer, /!excludedTranscriptIds\.has\(segment\.id\)/);
+  assert.match(renderer, /syncComposerWithTranscriptSelection\(\);\n\s*};/);
+  assert.match(renderer, /autoFillInputFromSTT\(text, id\)/);
+});
+
 test('aborting a subscription request terminates its CLI process promptly', async () => {
   const controller = new AbortController();
   const startedAt = Date.now();

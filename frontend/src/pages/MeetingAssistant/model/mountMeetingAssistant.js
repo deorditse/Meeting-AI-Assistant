@@ -209,6 +209,7 @@ export function mountMeetingAssistant() {
   let questionFinalizeTimer = null;
   let softClearTimer = null;
   let userSpeechStart = null;
+  let sttInputSegments = [];
 
   // Question history for undo (Ctrl+Z)
   const questionHistory = [];
@@ -337,7 +338,23 @@ export function mountMeetingAssistant() {
   }
 
   // ---- Auto-fill the input box with transcribed speech from interviewer ----
-  function autoFillInputFromSTT(text) {
+  function syncComposerWithTranscriptSelection() {
+    // Do not overwrite text the user typed manually after leaving STT mode.
+    if (!inputFromSTT && input.value.trim().length > 0) return;
+    const nextValue = sttInputSegments
+      .filter((segment) => !segment.id || !excludedTranscriptIds.has(segment.id))
+      .map((segment) => segment.text)
+      .join(' ')
+      .trim();
+    input.value = nextValue;
+    inputFromSTT = nextValue.length > 0;
+    lastSTTValue = nextValue;
+    if (!nextValue) composer.classList.remove('stt-filling', 'stt-dimmed', 'stt-ready', 'stt-accumulating');
+    syncPlaceholder();
+    updateQuestionReadyState();
+  }
+
+  function autoFillInputFromSTT(text, turnId = null) {
     // If user has manually typed something different, don't overwrite
     if (!inputFromSTT && input.value.trim().length > 0) return;
 
@@ -345,12 +362,8 @@ export function mountMeetingAssistant() {
     clearTimeout(softClearTimer);
     composer.classList.remove('stt-dimmed');
 
-    const current = input.value.trim();
-    const newText = current ? current + ' ' + text : text;
-    input.value = newText;
-    inputFromSTT = true;
-    lastSTTValue = newText; // FIX #6: Track the STT value for edit detection
-    syncPlaceholder();
+    sttInputSegments.push({ id: turnId == null ? null : String(turnId), text });
+    syncComposerWithTranscriptSelection();
 
     // Show filling state
     composer.classList.add('stt-filling');
@@ -410,6 +423,7 @@ export function mountMeetingAssistant() {
         saveToQuestionHistory(input.value);
         input.value = '';
         inputFromSTT = false;
+        sttInputSegments = [];
         composer.classList.remove('stt-filling', 'stt-dimmed', 'stt-ready', 'stt-accumulating');
         syncPlaceholder();
         updateSendButtonState(); // FIX #9: Update send button state
@@ -425,6 +439,7 @@ export function mountMeetingAssistant() {
     saveToQuestionHistory(input.value);
     input.value = '';
     inputFromSTT = false;
+    sttInputSegments = [];
     lastSTTValue = ''; // FIX #6: Clear the tracked STT value
     userSpeechStart = null;
     composer.classList.remove('stt-filling', 'stt-dimmed', 'stt-ready', 'stt-accumulating');
@@ -476,6 +491,7 @@ export function mountMeetingAssistant() {
         // User made a major change — detach from STT mode
         saveToQuestionHistory(lastSTTValue);
         inputFromSTT = false;
+        sttInputSegments = [];
         lastSTTValue = '';
         composer.classList.remove('stt-filling', 'stt-dimmed', 'stt-ready', 'stt-accumulating');
         clearTimeout(softClearTimer);
@@ -504,6 +520,7 @@ export function mountMeetingAssistant() {
     
     input.value = '';
     inputFromSTT = false;
+    sttInputSegments = [];
     lastSTTValue = ''; // FIX #6: Clear tracked STT value
     userSpeechStart = null;
     composer.classList.remove('stt-filling', 'stt-dimmed', 'stt-ready', 'stt-accumulating');
@@ -1048,6 +1065,7 @@ export function mountMeetingAssistant() {
             if (willExclude) excludedTranscriptIds.add(id);
             else excludedTranscriptIds.delete(id);
           }
+          syncComposerWithTranscriptSelection();
         };
         row.addEventListener('click', () => {
           if (window.getSelection && String(window.getSelection()).trim()) return;
@@ -1091,6 +1109,7 @@ export function mountMeetingAssistant() {
     if (list) list.innerHTML = '<div class="ts-placeholder">Здесь появится расшифровка разговора.</div>';
     tsSidebarInterimEl = null;
     excludedTranscriptIds.clear();
+    sttInputSegments = [];
     tsLastRow.you = null; tsLastRow.them = null;
     clearTimeout(tsRowTimer.you); clearTimeout(tsRowTimer.them);
   }
@@ -1284,7 +1303,7 @@ export function mountMeetingAssistant() {
     // Auto-fill the input box with Them (interviewer) speech
     if (channel === 'them') {
       cancelSoftClear(); // Interviewer is speaking, cancel any pending clear
-      autoFillInputFromSTT(text);
+      autoFillInputFromSTT(text, id);
     } else {
       // User spoke — soft clear (don't immediately wipe, wait to see if they're really answering)
       softClearSTTFill();
