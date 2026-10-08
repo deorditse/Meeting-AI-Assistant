@@ -286,9 +286,21 @@ button:focus { outline: none; }
 .ai-text hr { height: 1px; border: 0; background: var(--bd-hair); margin: 12px 0; }
 .ai-text .code-block { position: relative; margin: 12px 0; }
 .ai-text .code-language {
-  position: absolute; top: 7px; right: 10px; z-index: 1;
+  position: absolute; top: 10px; left: 14px; z-index: 1;
   color: var(--tx-mut); font: 10px/1 var(--mono); text-transform: uppercase;
 }
+.ai-text .code-copy {
+  position: absolute; top: 6px; right: 7px; z-index: 2;
+  border: 1px solid rgba(255,255,255,0.12); border-radius: 7px;
+  background: rgba(255,255,255,0.07); color: var(--tx-2);
+  padding: 4px 8px; font: 600 10.5px/1.2 var(--font); cursor: pointer;
+  transition: color 140ms ease, background 140ms ease, border-color 140ms ease;
+}
+.ai-text .code-copy:hover, .ai-text .code-copy:focus-visible {
+  color: #fff; background: rgba(255,255,255,0.13); border-color: rgba(255,255,255,0.22);
+  outline: none;
+}
+.ai-text .code-copy.copied { color: #a7f3c8; border-color: rgba(34,197,94,0.35); }
 .ai-text pre {
   background: rgba(0,0,0,0.35);
   border: 1px solid rgba(255,255,255,0.08);
@@ -296,11 +308,12 @@ button:focus { outline: none; }
   padding: 12px 14px;
   overflow-x: auto;
   font-family: var(--mono);
-  font-size: 0.78em; line-height: 1.5;
+  font-size: 1.2em; line-height: 1.5;
   margin: 0;
 }
-.ai-text .code-language + pre { padding-top: 28px; }
+.ai-text .code-block pre { padding-top: 36px; }
 .ai-text code { font-family: var(--mono); font-size: 0.92em; }
+.ai-text pre code { font-size: inherit; }
 .ai-text :not(pre) > code { background: rgba(255,255,255,0.10); padding: 1px 5px; border-radius: 5px; }
 .ai-caret { display:inline-block; width:7px; height:1.05em; vertical-align:-2px; background: var(--accent); border-radius:1px; animation: blink 1s step-end infinite; margin-left: 2px; }
 .status-line { color: var(--tx-mut); font-size: 13px; margin: 10px 0 2px; }

@@ -88,6 +88,7 @@ export function mountMeetingAssistant() {
           const languageClass = codeLanguage ? ` class="language-${esc(codeLanguage)}"` : '';
           html += '<div class="code-block">' +
             (codeLanguage ? `<div class="code-language">${esc(codeLanguage)}</div>` : '') +
+            '<button type="button" class="code-copy" title="Скопировать код" aria-label="Скопировать код">Копировать</button>' +
             `<pre><code${languageClass}>`;
           inCode = true;
         } else {
@@ -119,6 +120,40 @@ export function mountMeetingAssistant() {
     flushP(); closeList(); if (inCode) html += '</code></pre></div>';
     return html;
   }
+
+  async function copyCode(text) {
+    if (navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch { /* use the local fallback below */ }
+    }
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    const copied = document.execCommand('copy');
+    textarea.remove();
+    return copied;
+  }
+
+  messages.addEventListener('click', async (event) => {
+    const button = event.target.closest('.code-copy');
+    if (!button || !messages.contains(button)) return;
+    const code = button.closest('.code-block')?.querySelector('pre code')?.textContent || '';
+    if (!code) return;
+    const original = button.textContent;
+    const copied = await copyCode(code);
+    button.textContent = copied ? 'Скопировано' : 'Не удалось';
+    button.classList.toggle('copied', copied);
+    window.setTimeout(() => {
+      button.textContent = original;
+      button.classList.remove('copied');
+    }, 1400);
+  });
 
   function clearMessages() { messages.innerHTML = ''; aiEl = null; caretEl = null; }
 
