@@ -2,308 +2,264 @@
 
 # M2A — Meeting AI Assistant
 
-**An open-source Russian-first AI copilot for meetings, interviews, and screen-aware help.**
+**Открытый русскоязычный AI-помощник для встреч, собеседований и разбора информации на экране.**
 
-Use an existing Codex or Claude Code subscription, an OpenAI or Anthropic API key, or your own OpenAI-compatible server.
+Работает через подписку Codex или Claude Code, API OpenAI/Anthropic либо собственный OpenAI-совместимый сервер. Распознавание речи настраивается независимо от провайдера чата.
 
-<img src="docs/m2a-chat.png" width="720" alt="Current M2A chat overlay with a Markdown code answer" />
+<img src="docs/m2a-screenshot-task.png" width="720" alt="M2A анализирует снимок экрана с задачей и показывает решение на Dart" />
 
 </div>
 
 ---
 
 > [!IMPORTANT]
-> **Please read this first.** m2a tries to stay out of screen recordings/shares, but this is **best-effort, not guaranteed** — on macOS 15.4+ Apple can let modern capture tools see it anyway, on Windows 10 builds older than 2004 it degrades to a black box instead of true exclusion, and a phone camera always can. Using a hidden assistant during a **proctored exam, job interview, or recorded meeting** may break that platform's rules and, in some places, consent laws. m2a is built for legitimate uses — your own notes, studying, accessibility, and practice. **You are responsible for how you use it.**
+> M2A предназначен для личных заметок, обучения, доступности, подготовки и разрешённой помощи во время встреч. Скрытие окна из записи и трансляции работает в режиме best effort и зависит от операционной системы и программы захвата. Соблюдайте правила экзамена, собеседования или конференции и требования к согласию участников записи.
 
----
+## Пример: решить задачу со снимка экрана
 
-## What it does
+1. Откройте задачу в браузере или IDE.
+2. В **Настройки → Вид** выберите нужный монитор. Можно оставить вариант «Экран, на котором находится курсор».
+3. Нажмите **Снимок экрана** или сочетание `⌘H` на macOS / `Ctrl+H` на Windows.
+4. M2A сделает один снимок выбранного экрана, покажет его миниатюру в сообщении и отправит изображение выбранной модели.
+5. Ответ появится в Markdown: краткая идея, код и оценка сложности.
 
-m2a floats a small glass panel on top of everything. It takes **three separate inputs** — your **screen**, your **microphone**, and your **meeting audio** (what the other person says) — and uses an AI model to help you in real time.
+Пример для задачи **«Самая сложная буква»**:
 
-| Feature | How to trigger | What it uses |
+```dart
+String hardestLetter(String s, List<int> typedAt) {
+  var answerIndex = 0;
+  var longest = -1;
+  var previousTime = 0;
+
+  for (var i = 0; i < s.length; i++) {
+    final duration = typedAt[i] - previousTime;
+    if (duration >= longest) {
+      longest = duration;
+      answerIndex = i;
+    }
+    previousTime = typedAt[i];
+  }
+  return s[answerIndex];
+}
+```
+
+Время поиска `i`-й буквы равно `A[i] - A[i - 1]`, а для первой буквы — `A[0]`. Проход выполняется за `O(n)` и требует `O(1)` дополнительной памяти. Сравнение `>=` выбирает последнюю букву при равном времени поиска.
+
+## Возможности
+
+| Возможность | Как запустить | Что используется |
 |---|---|---|
-| **Smart assist** | `⌘` `⇧` `↵` (macOS) or `Ctrl` `Shift` `Enter` (Windows) | selected recent conversation |
-| **What should I say?** | `⌘` `↵` (macOS) or `Ctrl` `Enter` (Windows) | meeting audio + your mic |
-| **Recap** | button | the whole conversation |
-| **Ask anything** | type + `↵` | your question + selected conversation blocks |
-| **Analyze the screen** | **Screenshot** button | a one-time capture of the selected display |
-| **Smart** toggle | pill in the box | switches to a smarter (slower) model |
+| **Что мне ответить?** | `⌘Enter` / `Ctrl+Enter` | выбранные реплики текущей встречи |
+| **Умная помощь** | `⌘Shift+Enter` / `Ctrl+Shift+Enter` | вопрос и выбранная расшифровка |
+| **Снимок экрана** | кнопка или `⌘H` / `Ctrl+H` | один снимок выбранного монитора |
+| **Итоги** | кнопка «Итоги» | расшифровка текущей сессии |
+| **Обычный вопрос** | текст и Enter | вопрос, контекст сессии и выбранные реплики |
+| **Умный режим** | переключатель в поле ввода | более сильная модель выбранного провайдера |
 
-It's a copilot for **live meetings** ("what do I say to that?") and **coding problems** (screenshot → full solution), and it's designed to be **invisible in screen shares** so it stays your private assistant.
+Дополнительно:
+
+- потоковый Markdown с удобными блоками кода;
+- кнопка остановки ответа;
+- новый запрос прерывает предыдущую генерацию;
+- отдельный выбор провайдера чата и распознавания речи;
+- ручное включение и исключение блоков расшифровки из контекста;
+- файлы, ссылки, заметки и примеры внутри конкретной сессии;
+- сохранение и продолжение предыдущих встреч;
+- выбор монитора для снимка;
+- изменение прозрачности, размера текста и размера самого окна;
+- локальное распознавание через `whisper.cpp`.
 
 <div align="center">
-  <img src="docs/m2a-settings.png" width="720" alt="Current M2A appearance settings with opacity and chat text size controls" />
+  <img src="docs/m2a-settings.png" width="720" alt="Настройки внешнего вида M2A" />
 </div>
 
-### Platform support
+## Поддерживаемые провайдеры
 
-|  | macOS | Windows 11 / 10 2004+ |
+### Чат и анализ экрана
+
+| Вариант | Авторизация | Комментарий |
 |---|---|---|
-| Screen + coding help | ✅ | ✅ |
-| Your mic (the **You** channel) | ✅ | ✅ |
-| Meeting audio (the **Them** channel) | ✅ macOS 14.4+ | ✅ |
-| Hidden from screen shares | ⚠️ best-effort, weaker on macOS 15.4+ | ✅ `WDA_EXCLUDEFROMCAPTURE` |
-| Permissions to grant | Microphone **and** Screen Recording | Microphone only |
+| **Codex** | существующий вход в Codex CLI | использует лимиты вашей подписки, API-ключ не нужен |
+| **Claude Code** | существующий вход в Claude Code CLI | использует лимиты вашей подписки, API-ключ не нужен |
+| **OpenAI API** | отдельный API-ключ | оплачивается через API-биллинг OpenAI |
+| **Claude API** | отдельный API-ключ Anthropic | оплачивается через API-биллинг Anthropic |
+| **Свой сервер** | URL, модель и необязательный ключ | любой OpenAI-совместимый endpoint |
 
-> [!NOTE]
-> **Meeting audio needs macOS 14.4+.** Capturing the *other* person — what powers **What should I say?** and **Recap** — uses system-audio loopback. On Windows that works out of the box. On macOS it relies on ScreenCaptureKit, which m2a enables through Chromium's `MacLoopbackAudioForScreenShare` and `MacSckSystemAudioLoopbackOverride` switches; on older macOS the *Them* channel stays silent while your screen and the **You** channel keep working.
+Подписка ChatGPT/Codex и API OpenAI имеют разные биллинги. В режиме Codex приложение запускает установленный CLI и использует его авторизацию; в режиме OpenAI API расходуется баланс API.
 
----
+### Распознавание речи
 
-## Install
+Распознавание выбирается независимо от чата:
 
-Option A is the easiest on both platforms. Use Option B if you'd rather run from source.
+- **Локальный Whisper** — аудио остаётся на компьютере;
+- **OpenAI API** — отдельный ключ для распознавания;
+- **Свой сервер** — OpenAI-совместимый speech-to-text endpoint.
 
-### Option A — Download the app (easiest)
+Для русской речи по умолчанию выбраны язык `ru` и многоязычная модель `large-v3`. Модель можно заменить на меньшую, если важнее скорость или экономия памяти.
 
-Go to the [**Releases**](../../releases) page, then choose your platform:
+## Установка
 
-- **Windows 10/11 (x64):** download **`m2a-win-x64.exe`**, run it, and launch m2a from the Start menu. The installer is unsigned, so Windows SmartScreen may show an **Unknown publisher** warning.
-- **macOS (Apple Silicon):** download **`m2a-…-mac-arm64.zip`**, unzip it, drag **`m2a.app`** into **Applications**, and open it.
-- **macOS (Intel):** download **`m2a-…-mac-x64.zip`**, unzip it, drag **`m2a.app`** into **Applications**, and open it.
+### Готовая сборка
 
-### Option B — Run from source (macOS or Windows)
+Откройте страницу [Releases](../../releases) и скачайте файл для своей системы:
 
-You need [Node.js](https://nodejs.org) 22.12+ installed (required by dev dependencies). No Xcode and no Visual Studio build tools required — m2a deliberately avoids native modules.
+- Windows x64: установщик `M2A - Meeting AI Assistant-win-x64.exe`;
+- macOS Apple Silicon: архив `M2A - Meeting AI Assistant-…-mac-arm64.zip`;
+- macOS Intel: архив `M2A - Meeting AI Assistant-…-mac-x64.zip`.
+
+На macOS распакуйте приложение и перенесите его в `/Applications`.
+
+### Запуск из исходников
+
+Нужен Node.js 22.12 или новее.
 
 ```bash
-git clone git@github.com:deorditse/meeting_ai_assistant.git
-cd meeting_ai_assistant
+git clone git@github.com:deorditse/Meeting-AI-Assistant.git
+cd Meeting-AI-Assistant
 npm install
 npm run dev
 ```
 
-`npm run dev` starts Vite with hot reload and Electron together. Use `npm start` to build the renderer first and launch the production-style local app. That's the whole setup on Windows — grant the mic when Windows asks and you're done.
+`npm run dev` запускает Vite и Electron с горячим обновлением. Для запуска production-подобной локальной версии:
 
-To build a standalone app:
 ```bash
-npm run pack        # unpacked app in dist/ (either OS)
-npm run pack:win    # unpacked Windows app -> dist/win-unpacked/m2a.exe
-npm run dist:mac    # macOS zip            -> dist/
-npm run dist:win    # Windows installer    -> dist/m2a-win-x64.exe
-```
-> **macOS note:** the packaged app is **ad-hoc signed** unless a Developer ID certificate is configured. macOS ties permission grants to the exact build, so **rebuilding resets the mic/screen permissions** — you'll grant them again. For everyday use, build once and keep it. Windows has no equivalent problem.
-To build a packaged app:
-```bash
-npm run dist:mac    # macOS build
-npm run dist:win    # Windows build
-npm run dist:linux  # Linux x64 AppImage
+npm start
 ```
 
-Packaged builds include a pinned `whisper.cpp` runtime. When running from source, prepare the matching runtime once:
+Сборка приложения:
+
+```bash
+npm run pack          # распакованная сборка текущей платформы
+npm run dist:mac      # macOS x64 + arm64
+npm run dist:win      # Windows x64 installer
+npm run dist:linux    # Linux x64 AppImage
+```
+
+## Первый запуск
+
+### 1. Разрешения
+
+На macOS откройте **Системные настройки → Конфиденциальность и безопасность** и разрешите M2A:
+
+- доступ к микрофону;
+- запись экрана и системного звука.
+
+После первого изменения разрешения macOS может потребовать перезапуск приложения. При ошибке M2A открывает нужный раздел системных настроек.
+
+На Windows разрешите микрофон в **Параметры → Конфиденциальность и безопасность → Микрофон**. Для обычного снимка экрана отдельное разрешение не требуется.
+
+### 2. Провайдер чата
+
+Откройте **Настройки → Провайдер** и выберите Codex, Claude Code, OpenAI API, Claude API или свой сервер. Для подписочных вариантов приложение покажет состояние входа установленного CLI.
+
+### 3. Распознавание речи
+
+Откройте **Настройки → Аудио**. Для локального режима:
+
+1. нажмите **Подготовить движок**, если `whisper.cpp` ещё не установлен;
+2. выберите модель;
+3. скачайте или импортируйте файл модели;
+4. дождитесь статуса готовности.
+
+Загрузка поддерживает отмену и продолжение, а файл проверяется по размеру и SHA-256. Локальный режим не переключается на облако автоматически при ошибке.
+
+## Сессии и контекст
+
+Кнопка **Контекст** относится только к текущей сессии. В неё можно добавить:
+
+- тему и цель встречи;
+- инструкции и примеры;
+- PDF, DOCX, TXT, Markdown, CSV, JSON и HTML;
+- ссылки на текстовые страницы.
+
+Материалы хранятся в памяти текущей сессии и очищаются после её завершения. Один файл ограничен 20 МБ, а текст перед отправкой дополнительно сокращается до безопасного размера контекста.
+
+Каждая распознанная реплика по умолчанию подсвечена и входит в запрос к AI. Нажмите на блок расшифровки, чтобы исключить его; повторное нажатие вернёт его в контекст.
+
+Завершённые встречи доступны через кнопку **Сессии**. Сохранённую сессию можно открыть и продолжить: её расшифровка снова становится активной для новых вопросов и итогов.
+
+## Управление
+
+| Действие | macOS | Windows/Linux |
+|---|---|---|
+| Отправить вопрос | `Enter` | `Enter` |
+| Перенос строки | `Shift+Enter` | `Shift+Enter` |
+| Что мне ответить? | `⌘Enter` | `Ctrl+Enter` |
+| Умная помощь | `⌘Shift+Enter` | `Ctrl+Shift+Enter` |
+| Снимок экрана | `⌘H` | `Ctrl+H` |
+| Настройки | `⌘,` | `Ctrl+,` |
+| Выход | `⌘Shift+X` | `Ctrl+Shift+X` |
+
+Окно перемещается за верхнюю плашку. Размер меняется перетаскиванием любого края или угла и сохраняется между запусками. Пустые прозрачные области пропускают клики в приложение под M2A.
+
+## Как устроен проект
+
+M2A — Electron-приложение с renderer на React 18, TypeScript и Vite.
+
+```text
+main.js                         composition root Electron
+src/domain/                     чистые правила и преобразования
+src/application/                сценарии приложения и состояние use case
+src/infrastructure/electron/    IPC и адаптеры Electron
+frontend/src/features/          независимые функции интерфейса
+frontend/src/pages/             сборка экрана ассистента
+```
+
+Экран, микрофон и системный звук обрабатываются раздельно:
+
+```text
+выбранный экран ── снимок по кнопке ───────────────┐
+микрофон ──────── VAD → распознавание → «Вы» ─────┼─ контекст → выбранная LLM → Markdown
+системный звук ── VAD → распознавание → «Собеседник»┘
+```
+
+Подробности находятся в [описании архитектуры](docs/ARCHITECTURE.md), а результаты последнего аудита и порядок дальнейшего рефакторинга — в [ARCHITECTURE_AUDIT.md](docs/ARCHITECTURE_AUDIT.md).
+
+## Приватность
+
+- Снимок создаётся только после явного нажатия кнопки или горячей клавиши.
+- Локальный Whisper не отправляет аудио в облако.
+- Контекст сессии не сохраняется в глобальных настройках.
+- Ключи и история встреч хранятся локально в каталоге данных Electron.
+- В облако уходит только запрос, необходимый выбранному провайдеру для ответа или распознавания.
+- Окно запрашивает у ОС исключение из захвата через `setContentProtection(true)`, но результат зависит от платформы и программы трансляции.
+
+## Решение проблем
+
+### «Движок Whisper не подготовлен»
+
+В packaged-сборке откройте **Настройки → Аудио** и нажмите **Подготовить движок**. При запуске из исходников можно подготовить runtime командой:
 
 ```bash
 npm run prepare:whisper
 ```
 
-Windows x64 and Linux x64/arm64 use checksum-verified binaries from the pinned upstream release. macOS x64/arm64 builds `whisper-server` from the same pinned source tag and requires CMake plus Xcode command-line tools.
+На macOS для локальной сборки `whisper.cpp` нужны CMake и Xcode Command Line Tools.
 
-> Note: permission grants can reset after a rebuild, so you may need to re-enable microphone/screen access after packaging a fresh build.
+### «Модель Whisper не найдена»
 
----
+Выберите модель в **Настройки → Аудио** и нажмите **Скачать**. Если проверка файла не проходит, удалите модель в том же разделе и загрузите заново.
 
-## First launch — the 1-minute setup
+### Разрешение на запись экрана уже включено, но M2A его не видит
 
-When m2a opens the first time, a **built-in tutorial** walks you through everything below. You can reopen it anytime by clicking the **help** icon (top-left of the pill). Here's the same thing in writing.
+На macOS выключите и снова включите M2A в разделе записи экрана, затем полностью завершите и откройте приложение. После пересборки подпись локального приложения может измениться, и macOS воспринимает его как новую версию.
 
-### Step 1 — Grant permissions
+### Codex CLI сообщает `workspace routing discovery failed`
 
-m2a can't help until your OS lets it see and hear. When you first use a feature you'll usually be prompted — click **Allow**. If no prompt appears, grant access manually.
+Проверьте вход командой `codex login`, доступность сети и работу обычного запроса через CLI. M2A повторяет временные routing-ошибки, но не может восстановить недоступную авторизацию или сервис.
 
-**On macOS — two grants.** System Settings → **Privacy & Security** → **Microphone** and **Screen Recording** → turn on **m2a**. macOS may ask you to **quit & reopen** m2a — let it. Screen Recording covers both the screenshot features and meeting-audio capture.
+### В расшифровке появляются «Спасибо» и «Продолжение следует»
 
-**On Windows — one grant.** Only the microphone needs permission: Settings → **Privacy & security** → **Microphone** → turn on **Microphone access** *and* **Let desktop apps access your microphone**. Screenshots and meeting audio need no permission at all — they work immediately, using Windows loopback capture.
+Используйте многоязычную модель `large-v3`, язык `ru` и уменьшите фоновый шум. M2A фильтрует известные артефакты тишины, но слишком короткие или тихие фрагменты всё равно снижают точность.
 
-### Step 2 — Pick how m2a answers: publik API (default) or your own key
+## Проверки
 
-The packaged builds from the Releases page run on **publik API** by default.
-You need no account and no key to open m2a. The first-run guide shows a short
-disclosure. It states the price: every request costs 50% of the model's
-published list price. It also states the average cost: most people spend
-under $2 a month. It also states where your data goes: your prompts and
-screenshots go through publik's servers to a shared model account, and
-publik never trains on them. Nothing is set up until you press **Continue
-with publik API**. A new computer starts at $0.00. Settings → Keys shows
-the balance line and a **Link this computer & pick a plan** button. Linking
-this computer to your publik account gives $0.05 of free use, once. Then
-add a plan or a pack to keep going. **Use my own key instead** switches
-to any of the providers below at any time. m2a never replaces a key you have
-already entered.
-
-A build from source has no publik app token unless you export
-`PUBLIK_APP_TOKEN`; without one the publik option does not appear and m2a works
-exactly as before. The release workflow embeds the token from the
-`PUBLIK_APP_TOKEN` repository secret (it is a publishable identifier that lets
-the gateway attribute installs to m2a — it holds no balance and is not a key).
-
-### Step 2 (alternative) — Add your AI key (bring your own)
-
-m2a uses **your own** API key, so it's free to run (you only pay your AI provider for what you use). Click the **`...`** button in the input box (or press `⌘` `,` on macOS / `Ctrl` `,` on Windows) to open **Settings**, pick a provider, and paste your key:
-
-| Provider | Get a key | Notes |
-|---|---|---|
-| **Cerebras** | [cloud.cerebras.ai](https://cloud.cerebras.ai) | Fast OpenAI-compatible chat at `https://api.cerebras.ai/v1`. No speech-to-text — add an OpenAI, Gemini, or Deepgram key for listening. |
-| **OpenAI** | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) | One key does everything — **but** for the *listening* features the key must have **Whisper / audio** access (a "restricted" project key that only allows chat will give a 403 on transcription). |
-| **Anthropic (Claude)** | [console.anthropic.com](https://console.anthropic.com) | Great for screen & coding help. Claude has no speech-to-text, so add an OpenAI or Gemini key too if you want the listening features. |
-| **Google Gemini** | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) | One key does chat + transcription. |
-| **Azure AI Foundry** | [ai.azure.com](https://ai.azure.com) | Paste your **endpoint** plus your key in Settings. **Azure OpenAI:** `https://&lt;resource&gt;.openai.azure.com/openai` — **AI Foundry:** `https://&lt;host&gt;.cognitiveservices.azure.com` (m2a appends `/openai/v1` itself). The **model** fields are your deployment names. No speech-to-text — add an OpenAI or Gemini key for listening. |
-| **DeepSeek** | [platform.deepseek.com/api_keys](https://platform.deepseek.com/api_keys) | OpenAI-compatible chat API. No speech-to-text — add an OpenAI or Gemini key too if you want the listening features. |
-| **Groq** | [console.groq.com](https://console.groq.com) | Fast OpenAI-compatible chat. Groq Whisper can also handle transcription if you pick Groq on the Audio tab. |
-| **Custom** | Your endpoint or gateway | Any OpenAI-compatible Chat Completions endpoint. The API key is optional for unauthenticated local servers. |
-
-To use an OpenAI-compatible endpoint, select **Custom** and configure its Base URL, API key, and Fast/Smart model IDs. Custom endpoints handle LLM requests only; listening continues to use Deepgram, OpenAI, or Gemini credentials.
-
-| Example | Base URL | Model |
-|---|---|---|
-| OpenClaw local gateway | `http://127.0.0.1:18789/v1` | `openclaw/default` |
-| Ollama | `http://127.0.0.1:11434/v1` | An installed Ollama model ID |
-
-Your key is stored **only on your computer** (in `m2a-data.json`) and is sent **only** to that provider. m2a has no server and collects nothing.
-
-### Optional — transcribe locally with whisper.cpp
-
-Open **Settings → Audio**, choose **Local**, and download a model. `base.en` is the recommended English default; all 30 models supported by the official whisper.cpp download script are available, including multilingual, quantized, large, turbo, and TinyDiarize variants.
-
-Local mode is independent from the chat provider, so you can use local speech-to-text with OpenAI, Anthropic, or Gemini chat. The selected model loads once when listening starts, serves both the **You** and **Them** channels, and unloads only after queued speech has been transcribed when listening stops.
-
-- Audio inference stays on your computer and audio is never written to a temporary file.
-- Model files are downloaded only when you ask, support cancel/resume, and are checked against pinned byte counts and SHA-256 hashes.
-- Local mode never silently sends audio to a cloud fallback. A local failure is reported without sending the audio elsewhere.
-- Models are stored under M2A's Electron user-data directory and can be imported or deleted from Settings.
-
-### Optional — word-by-word transcription with only a Gemini key
-
-Deepgram and OpenAI keys stream transcripts word by word automatically. A Gemini key transcribes sentence by sentence unless you pick **Gemini** explicitly under **Settings → Audio**, which switches it to the `gemini-3.5-transcribe-live` streaming model (its running hypothesis gets revised as you speak, which some people find jumpy — that's why it's opt-in).
-
-### Meeting memory
-
-m2a keeps what it hears. Every transcript turn is saved to `meetings.json` in m2a's data folder as it lands, so a crash or a quit mid-meeting loses nothing: relaunch within 30 minutes and the transcript is restored to the sidebar and **Recap** / **Follow-up questions** carry on from where the conversation was. When you stop listening, m2a writes notes for the meeting with your chat model — summary, key points, decisions, action items, follow-ups — and the summaries of your last three meetings are given to the model as background for later conversations (the live transcript always takes priority). A 30-minute silence, the clear-transcript button, or a stale meeting at launch closes the meeting. The newest 50 meetings are kept; nothing leaves your computer except the transcript sent to your chosen provider to write the notes.
-
-### Optional — tailor answers to your background
-
-In **Settings**, paste your résumé or professional background into **Résumé / professional background**. m2a uses it as the factual reference for career-related answers and says when the résumé does not provide a detail. You can clear it anytime.
-
-### Context for the current session
-
-Before a meeting, press **Context** in the session panel (or open **Settings → Context**) and add its topic, notes, examples, files, or web links. M2A supports PDF, DOCX, TXT, Markdown, CSV, JSON, and HTML files; for links it downloads and extracts the readable text when you add the URL. The prepared material lives only in memory for the current session, is included with answers from the selected AI provider, and is deleted when the session ends.
-
-### Step 3 — The Zoom setting (only needed for Zoom)
-
-m2a is hidden from most screen-share tools automatically — **Google Meet, Microsoft Teams, and QuickTime need nothing.** **Zoom** has a specific setting that decides whether it respects m2a's "don't capture me" flag:
-
-> **Zoom → Settings → Share Screen → Advanced → Screen capture mode → choose "Advanced capture with window filtering."**
-
-**Why:** the *"...with window filtering"* modes tell Zoom to leave out windows that mark themselves as private — which is exactly what m2a does. The **"Advanced capture without window filtering"** mode grabs the raw screen and **will show m2a**, so avoid it.
-
----
-
-## How to use it
-
-> On Windows, press **`Ctrl`** wherever **`⌘`** appears below. m2a's own UI relabels the keys to match your OS.
-
-- **`⌘` `↵` — What should I say?** Suggests what to say next from the conversation. Works from anywhere.
-- **`⌘` `⇧` `↵` — Smart assist.** The do-the-smart-thing key. On a coding problem it solves it; in a conversation it tells you what to say. Works from anywhere.
-- **`⌘` `H` — Solve what's on screen.** Screenshots a coding problem and returns the approach, code, and time/space complexity.
-- **Start session / End session** (top bar) — start or stop **listening** to a meeting. The green dot means it's live.
-- **Type a question** in the box and press `↵` to ask about your screen or conversation.
-- **Smart** — flip it on for a smarter, more thorough model; off for fast and cheap.
-- **Hide** collapses the panel to just the top bar. Drag m2a around by the **top pill**. Quit with `⌘` `⇧` `X` on macOS or `Ctrl` `Shift` `X` on Windows.
-
-The panel is see-through and click-through — the empty space around it never blocks the app behind it.
-
----
-
-## How it works (under the hood)
-
-m2a is an [Electron](https://www.electronjs.org/) app with a React 18 + TypeScript renderer built by Vite. The renderer follows a flat `app → pages → shared` structure under `frontend/src`; Electron services remain under `src`. Everything runs locally except the calls to your chosen AI provider.
-
-**The three inputs are kept completely separate:**
-- **Screen** — captured with Electron's `desktopCapturer` (full-resolution screenshots, taken only when a feature needs one).
-- **Your mic ("You")** — `getUserMedia` → downsampled to 16 kHz audio → transcribed.
-- **Meeting audio ("Them")** — `getDisplayMedia` loopback capture of your system's output audio, kept on its own channel so m2a knows *who* said what. **Windows only** — Chromium doesn't implement loopback capture elsewhere, so on macOS this stream comes back video-only and the channel stays silent.
-
-Both audio streams are transcribed by the independently selected speech provider (local whisper.cpp, Deepgram, OpenAI, or Gemini) and fed, with an optional screenshot, to your chat model. Responses **stream** into the panel word-by-word.
-
-When Local transcription is selected, M2A runs one persistent `whisper-server` sidecar bound to `127.0.0.1` on a temporary port with a random request path. Voice activity detection creates bounded in-memory utterances with pre-roll, and both channels share a serialized inference queue because one Whisper context must not process concurrent requests. Stop immediately ends new audio capture, drains the current queue for a bounded period, then terminates the sidecar.
-
-**The invisibility** is a single window flag — `setContentProtection(true)` — which the OS enforces:
-
-- **macOS:** sets `NSWindowSharingNone`, asking the window server to exclude m2a from capture streams. On macOS 15.4+ Apple lets some capture tools ignore it, which is why it's best-effort (see the disclaimer at the top).
-- **Windows:** sets `WDA_EXCLUDEFROMCAPTURE` via `SetWindowDisplayAffinity`, and the compositor drops the window from every capture path. Windows 10 builds before 2004 fall back to `WDA_MONITOR`, which renders a black box rather than truly excluding.
-
-It's the same mechanism DRM apps and Zoom's own toolbar use. It is **not** a GPU trick or a special overlay layer. Set `M2A_NO_PROTECT=1` to disable it while debugging.
-
-```
-main process ──┬─ overlay window (frameless, transparent, always-on-top, content-protected)
-               ├─ screenshot capture (desktopCapturer)
-               ├─ speech-to-text (Whisper / Gemini)      ── "You" + "Them" channels
-               └─ LLM streaming (OpenAI / Anthropic / Gemini / Custom)
-renderer ──────┴─ the glass UI + mic capture + system-audio loopback
+```bash
+npm test
+npm run build
+npm audit --omit=dev
 ```
 
----
+## Лицензия
 
-## Troubleshooting
-
-**"It says give access, but I already gave access." (macOS)**
-**Local transcription says the runtime is not prepared.**
-Packaged releases include the runtime. If you are running from source, run `npm run prepare:whisper` once and restart M2A. On macOS, install CMake and Xcode command-line tools first.
-
-**Local transcription says the model is missing or invalid.**
-Open **Settings → Audio**, select the model, and choose **Download**. A cancelled download can be resumed. If verification fails repeatedly, delete the partial/model file from the same screen and download it again.
-
-**A large local model is slow or runs out of memory.**
-Try `base.en`, `tiny.en`, or a quantized `q5`/`q8` model. Model size in Settings is the download size, not a guarantee of runtime RAM use; larger models require substantially more memory and CPU/GPU time.
-
-**"It says give access, but I already gave access."**
-You probably granted an older build. Because the app is ad-hoc signed, a rebuild changes its identity and macOS stops honoring the old grant (the checkmark can linger). Toggle m2a **off and on** in System Settings → Screen Recording, or remove and re-add it.
-
-**"What should I say?" or "Recap" never hear the other person (macOS).**
-Expected — meeting audio is Windows-only (see [Platform support](#platform-support)). Your own mic still transcribes, so those features see the *You* side of the conversation but never the *Them* side.
-
-**m2a has no dock or taskbar icon — how do I quit it?**
-That's deliberate; it stays out of your way. Press **`Ctrl` `Shift` `X`** (**`⌘` `⇧` `X`** on macOS). If the shortcut didn't register because another app claimed it, end the **m2a** (or **electron**) process in Task Manager / Activity Monitor.
-
-**`npm start` crashes with `Cannot read properties of undefined (reading 'getPath')`.**
-Something in your environment set **`ELECTRON_RUN_AS_NODE=1`** — some editors and terminals do, notably VS Code's integrated terminal. That makes Electron boot as plain Node, so `require('electron')` returns a path string instead of the real module. Clear it and relaunch: `unset ELECTRON_RUN_AS_NODE` (PowerShell: `Remove-Item Env:\ELECTRON_RUN_AS_NODE`).
-
-**A feature returns "403" / "no access to model."**
-Your API key is restricted. Most often it's an OpenAI **project key that only allows chat models** — it works for screen/coding help but 403s on transcription (Whisper). Fix: enable audio/Whisper on the key, use an unrestricted key, or add a Gemini key (m2a falls back to it for transcription).
-
-**Listening does nothing / no transcript.**
-Check Settings shows a transcription-capable key (OpenAI with Whisper, or Gemini). On macOS, also make sure Screen Recording is granted (meeting audio needs it). On Windows, make sure **Let desktop apps access your microphone** is on — the top-level Microphone toggle alone isn't enough.
-
-**A Custom provider request cannot connect.**
-Confirm the Base URL includes the endpoint's `/v1` path when required, the selected model ID exists on that endpoint, and the local gateway is running. Custom provider credentials are intentionally not reused for speech-to-text.
-
-**m2a shows up in my Zoom share.**
-Set Zoom's **Screen capture mode** to *"Advanced capture with window filtering"* (see Step 3). And remember: on macOS 15.4+ this can still fail — it's best-effort.
-
-**"m2a is damaged and can't be opened."**
-Run `xattr -cr /Applications/m2a.app` in Terminal once (see Install → Option A).
-
----
-
-## Privacy
-
-- No M2A accounts, hosted service, or telemetry. m2a collects nothing.
-- Your API keys live in a local file (`m2a-data.json`) and are sent only to the provider you chose.
-- When Custom is selected, its API key and LLM request data are sent to the Base URL you configured.
-- Your optional résumé text also lives in `m2a-data.json` and is sent with each model request to your selected AI provider. It is stored as plain text; clear it in Settings to remove it.
-- Current-session notes and extracted file/link text stay in memory until the session ends or you clear them, and are sent to the selected AI provider only with an answer request.
-- In Local transcription mode, microphone and meeting audio stay on your computer. In cloud transcription modes, audio is sent only to the selected speech provider.
-- Audio utterances and the current transcript stay in memory; M2A does not write captured audio to disk. Downloaded local model files remain on disk until you delete them.
-- A screenshot is created and sent to your selected chat provider only after you press **Screenshot**.
-
-## Contributing
-
-Issues and PRs welcome. The main areas are `main.js` (Electron lifecycle and capture), `frontend/src` (Vite + React UI), and `src/` (providers and local services).
-
-## Credits & license
-
-Built as an open-source study of how tools like **Cluely** and **Interview Coder** work. Modeled on the open-source clones `pickle-com/glass` and `sohzm/cheating-daddy`.
-
-Local transcription uses [whisper.cpp](https://github.com/ggml-org/whisper.cpp), distributed under the MIT License. Its license notice is included in packaged runtimes.
-
-**License: [GPL-3.0-or-later](LICENSE).**
+[GPL-3.0-or-later](LICENSE)
