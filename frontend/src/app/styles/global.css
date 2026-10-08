@@ -298,10 +298,17 @@ button:focus { outline: none; }
 /* ============================ Action row ============================ */
 #action-row {
   display: flex; align-items: center; flex-wrap: nowrap; gap: 4px;
-  margin-top: 6px; white-space: nowrap;
+  min-width: 0; max-width: 100%; overflow-x: auto; overflow-y: hidden;
+  margin-top: 6px; padding-bottom: 4px; white-space: nowrap;
+  overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.22) transparent;
 }
+#action-row::-webkit-scrollbar { height: 4px; }
+#action-row::-webkit-scrollbar-track { background: transparent; }
+#action-row::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.22); border-radius: 999px; }
 .act {
   display: inline-flex; align-items: center; gap: 6px;
+  flex: 0 0 auto;
   border: none; background: transparent; cursor: pointer;
   color: var(--tx-2); font-size: 14px; font-weight: 500; font-family: var(--font);
   padding: 5px 7px; border-radius: 8px;
@@ -311,7 +318,7 @@ button:focus { outline: none; }
 .act:hover { color: #fff; background: rgba(255,255,255,0.06); }
 .act:active { transform: translateY(0.5px); }
 .act:disabled { opacity: 0.5; cursor: default; }
-.sep { color: rgba(255,255,255,0.35); font-size: 14px; margin: 0 2px; }
+.sep { flex: 0 0 auto; color: rgba(255,255,255,0.35); font-size: 14px; margin: 0 2px; }
 .act-primary {
   font-size: 15px; font-weight: 600; padding: 6px 12px;
   background: rgba(60,131,245,0.14); border: 1px solid rgba(60,131,245,0.30);

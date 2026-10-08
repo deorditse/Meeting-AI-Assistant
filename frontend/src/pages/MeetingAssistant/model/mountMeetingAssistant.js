@@ -227,6 +227,14 @@ export function mountMeetingAssistant() {
     });
   });
 
+  const actionRow = $('#action-row');
+  actionRow.addEventListener('wheel', (event) => {
+    if (actionRow.scrollWidth <= actionRow.clientWidth) return;
+    if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+    actionRow.scrollLeft += event.deltaY;
+    event.preventDefault();
+  }, { passive: false });
+
   const input = $('#input');
   const placeholder = $('#placeholder');
   const composer = $('#composer');
