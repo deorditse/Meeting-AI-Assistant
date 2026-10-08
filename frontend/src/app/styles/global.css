@@ -308,7 +308,7 @@ button:focus { outline: none; }
   padding: 12px 14px;
   overflow-x: auto;
   font-family: var(--mono);
-  font-size: 1.2em; line-height: 1.5;
+  font-size: 1.1em; line-height: 1.5;
   margin: 0;
 }
 .ai-text .code-block pre { padding-top: 36px; }

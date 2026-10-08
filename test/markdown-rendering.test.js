@@ -18,7 +18,7 @@ test('chat renderer supports structured Markdown and language-labelled code bloc
   assert.match(renderer, /<blockquote>/);
   assert.match(styles, /\.ai-text \.code-language/);
   assert.match(styles, /\.ai-text \.code-copy/);
-  assert.match(styles, /\.ai-text pre \{[\s\S]*font-size:\s*1\.2em/);
+  assert.match(styles, /\.ai-text pre \{[\s\S]*font-size:\s*1\.1em/);
   assert.match(styles, /\.ai-text pre code \{ font-size: inherit; \}/);
   assert.match(styles, /\.ai-text ul, \.ai-text ol/);
 });
