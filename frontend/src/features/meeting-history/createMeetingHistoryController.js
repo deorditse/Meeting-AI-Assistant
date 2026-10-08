@@ -63,6 +63,18 @@ export function createMeetingHistoryController({ bridge, select }) {
     meta.className = 'meeting-meta';
     meta.textContent = `${formatDate(meeting.startedAt)} · ${meeting.transcript?.length || 0} реплик${meeting.active ? ' · идёт сейчас' : ''}`;
     heading.append(title, meta);
+    const actions = document.createElement('div');
+    actions.className = 'meeting-detail-actions';
+    const resume = document.createElement('button');
+    resume.type = 'button';
+    resume.className = 's-action primary';
+    resume.textContent = meeting.current ? 'Продолжить работу' : 'Продолжить сессию';
+    resume.title = meeting.current ? 'Вернуться к этой сессии' : 'Открыть расшифровку и продолжить эту сессию';
+    resume.addEventListener('click', async () => {
+      const result = await bridge.meetingsResume(meeting.id);
+      if (!result?.ok) return window.alert(result?.message || 'Не удалось продолжить сессию.');
+      close();
+    });
     const remove = document.createElement('button');
     remove.type = 'button';
     remove.className = 's-action danger';
@@ -76,7 +88,8 @@ export function createMeetingHistoryController({ bridge, select }) {
       selectedId = null;
       await refresh();
     });
-    header.append(heading, remove);
+    actions.append(resume, remove);
+    header.append(heading, actions);
     detailHost.append(header);
 
     for (const block of [

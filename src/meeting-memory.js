@@ -28,6 +28,7 @@ function createMeetingMemory(opts) {
   let current = null;        // the meeting the live transcript is being written to
   let notesTurnCount = 0;    // transcript length when notes were last written for `current`
   let notesInFlight = null;
+  let explicitResumePending = false;
 
   function lastTurnTs(m) {
     return m.transcript.length ? m.transcript[m.transcript.length - 1].ts : m.startedAt;
@@ -82,10 +83,26 @@ function createMeetingMemory(opts) {
       return [];
     },
 
+    // Explicitly reopen any saved meeting, even outside the automatic
+    // 30-minute crash-recovery window. The first new turn must stay in this
+    // meeting regardless of the historical gap selected by the user.
+    resume(id) {
+      const meeting = store.get(String(id || ''));
+      if (!meeting) return null;
+      if (current && current.id !== meeting.id) this.end().catch(() => {});
+      current = meeting;
+      notesTurnCount = meeting.notesTurns || (meeting.summary ? meeting.transcript.length : 0);
+      explicitResumePending = true;
+      store.update(meeting.id, { endedAt: null });
+      log(`explicitly resumed meeting ${meeting.id} (${meeting.transcript.length} turns)`);
+      return meeting.transcript.slice();
+    },
+
     // Every live transcript turn lands here. A meeting opens on the first
     // turn; a long silence since the previous turn means the last one is over.
     onTurn(turn) {
-      if (current && now() - lastTurnTs(current) > cfg.resumeWindowMs) this.end();
+      if (current && !explicitResumePending && now() - lastTurnTs(current) > cfg.resumeWindowMs) this.end();
+      explicitResumePending = false;
       if (!current) {
         current = store.add();
         notesTurnCount = 0;
@@ -116,6 +133,7 @@ function createMeetingMemory(opts) {
       const notes = this.refreshNotes();
       current = null;
       notesTurnCount = 0;
+      explicitResumePending = false;
       log(`meeting ${m.id} ended (${m.transcript.length} turns)`);
       return notes;
     },

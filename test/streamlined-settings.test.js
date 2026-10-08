@@ -7,6 +7,7 @@ const root = path.join(__dirname, '..');
 const markup = fs.readFileSync(path.join(root, 'frontend/src/pages/MeetingAssistant/components/MeetingAssistantView/meetingAssistantMarkup.html'), 'utf8');
 const main = fs.readFileSync(path.join(root, 'main.js'), 'utf8');
 const sessionContextController = fs.readFileSync(path.join(root, 'frontend/src/features/session-context/createSessionContextController.js'), 'utf8');
+const meetingHistoryController = fs.readFileSync(path.join(root, 'frontend/src/features/meeting-history/createMeetingHistoryController.js'), 'utf8');
 const whisperRuntimeIpc = fs.readFileSync(path.join(root, 'src/infrastructure/electron/register-whisper-runtime-ipc.js'), 'utf8');
 const whisperRuntimeService = fs.readFileSync(path.join(root, 'src/application/whisper-runtime-service.js'), 'utf8');
 
@@ -98,6 +99,9 @@ test('saved meeting sessions are exposed through a dedicated history panel', () 
   assert.match(markup, /id="meetings-search"/);
   assert.match(preload, /meetingsList:.*meetings:list/);
   assert.match(preload, /meetingsGet:.*meetings:get/);
+  assert.match(preload, /meetingsResume:.*meetings:resume/);
   assert.match(preload, /meetingsRemove:.*meetings:remove/);
+  assert.match(renderer, /transcript:replace/);
+  assert.match(meetingHistoryController, /Продолжить сессию/);
   assert.match(renderer, /createMeetingHistoryController/);
 });

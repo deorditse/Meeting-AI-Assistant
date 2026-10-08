@@ -210,7 +210,24 @@ const meetingHistoryService = createMeetingHistoryService({
   getStore: () => meetingStore,
   getCurrentMeeting: () => meetingMemory?.current || null,
   isCapturing: () => state.capturing,
-  endCurrentMeeting: () => { if (meetingMemory) meetingMemory.end().catch(() => {}); }
+  endCurrentMeeting: () => { if (meetingMemory) meetingMemory.end().catch(() => {}); },
+  resumeMeeting: (id) => {
+    if (!meetingMemory) return null;
+    const wasCurrent = meetingMemory.current?.id === id;
+    const turns = meetingMemory.resume(id);
+    if (!turns) return null;
+    transcript.splice(0, transcript.length);
+    const restored = turns.slice(-MAX_TRANSCRIPT_TURNS).map((turn) => ({
+      ...turn,
+      id: turn.id || `${Number(turn.ts) || Date.now()}-${++transcriptSequence}`
+    }));
+    transcript.push(...restored);
+    resetSlidesSession();
+    if (!wasCurrent) clearSessionContext();
+    send('transcript:replace', { turns: restored, meetingId: id });
+    send('status', { message: `Сессия продолжена; восстановлено реплик: ${restored.length}.` });
+    return meetingMemory.current;
+  }
 });
 
 function publishTranscript(channel, text) {

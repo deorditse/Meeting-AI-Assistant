@@ -1379,6 +1379,15 @@ export function mountMeetingAssistant() {
       appendTranscriptHistoryTurn(t.channel, t.text, false, t.id);
     }
   });
+  m2a.on('transcript:replace', ({ turns }) => {
+    clearTranscriptSidebar();
+    hardClearSTTFill(false);
+    for (const turn of turns || []) {
+      if (!turn || !turn.text || turn.text.trim().length < 2) continue;
+      appendTranscriptHistoryTurn(turn.channel, turn.text, false, turn.id);
+    }
+    showToast('Сохранённая сессия открыта', 2200);
+  });
   let statusTimer = null;
   function showStatus(message, button) {
     let el = document.getElementById('m2a-status');

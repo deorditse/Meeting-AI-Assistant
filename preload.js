@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld('m2a', {
   clearTranscript: () => ipcRenderer.invoke('transcript:clear'),
   meetingsList: (query = '') => ipcRenderer.invoke('meetings:list', query),
   meetingsGet: (id) => ipcRenderer.invoke('meetings:get', id),
+  meetingsResume: (id) => ipcRenderer.invoke('meetings:resume', id),
   meetingsRemove: (id) => ipcRenderer.invoke('meetings:remove', id),
   slidesList: () => ipcRenderer.invoke('slides:list'),
   slidesState: () => ipcRenderer.invoke('slides:state'),
@@ -55,7 +56,7 @@ contextBridge.exposeInMainWorld('m2a', {
   permissionsContinue: () => ipcRenderer.send('permissions:continue'),
   log: (msg) => ipcRenderer.send('log', msg),
   on: (channel, cb) => {
-    const allowed = ['capture:state', 'llm:start', 'llm:token', 'llm:done', 'llm:error', 'status', 'transcript', 'transcript:restore', 'stt:interim', 'stt:final', 'stt:status', 'vad:state', 'applink:consent-request', 'hide:toggle', 'whisper:download-progress', 'whisper:models-changed', 'publik:state', 'slides:update', 'session-context:changed'];
+    const allowed = ['capture:state', 'llm:start', 'llm:token', 'llm:done', 'llm:error', 'status', 'transcript', 'transcript:restore', 'transcript:replace', 'stt:interim', 'stt:final', 'stt:status', 'vad:state', 'applink:consent-request', 'hide:toggle', 'whisper:download-progress', 'whisper:models-changed', 'publik:state', 'slides:update', 'session-context:changed'];
     if (!allowed.includes(channel)) return;
     ipcRenderer.on(channel, (_e, data) => cb(data));
   }

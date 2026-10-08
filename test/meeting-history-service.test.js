@@ -47,3 +47,21 @@ test('allows deletion of a restored session while capture is stopped', () => {
   assert.equal(service.remove('new').ok, true);
   assert.equal(ended, true);
 });
+
+test('resumes a selected saved session but refuses to switch during another active recording', () => {
+  const { meetings, store } = fixture();
+  let current = meetings[1];
+  let capturing = false;
+  const service = createMeetingHistoryService({
+    getStore: () => store,
+    getCurrentMeeting: () => current,
+    isCapturing: () => capturing,
+    resumeMeeting: (id) => { current = store.get(id); return current; }
+  });
+
+  assert.equal(service.resume('old').ok, true);
+  assert.equal(current.id, 'old');
+  capturing = true;
+  assert.equal(service.resume('new').code, 'CAPTURING');
+  assert.equal(current.id, 'old');
+});

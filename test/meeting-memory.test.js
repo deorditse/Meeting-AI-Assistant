@@ -119,6 +119,22 @@ test('resumeOpen closes a stale open meeting instead of resuming it', () => {
   assert.equal(createMeetingStore({ file }).get(m.id).endedAt, 1_000_050, 'closed at its last turn');
 });
 
+test('explicit resume reopens an old saved meeting and appends new turns to it', async () => {
+  const { store, memory, tick } = harness();
+  const saved = store.add();
+  store.addTurn(saved.id, turn('them', 'старый вопрос', 1_000_001));
+  store.update(saved.id, { endedAt: 1_000_002 });
+  tick(3 * 60 * 60 * 1000);
+
+  assert.deepEqual(memory.resume(saved.id).map((item) => item.text), ['старый вопрос']);
+  assert.equal(memory.current.id, saved.id);
+  assert.equal(store.get(saved.id).endedAt, null);
+  memory.onTurn(turn('you', 'продолжаем', 1_000_000 + 3 * 60 * 60 * 1000));
+  assert.equal(store.all().length, 1, 'explicit resume must not split on the historical gap');
+  assert.deepEqual(store.get(saved.id).transcript.map((item) => item.text), ['старый вопрос', 'продолжаем']);
+  await memory.end();
+});
+
 test('catchUp writes notes for ended meetings that have none', async () => {
   const { store, memory, llmCalls } = harness();
   const a = store.add(); store.addTurn(a.id, turn('them', 'a', 1)); store.addTurn(a.id, turn('you', 'b', 2)); store.update(a.id, { endedAt: 3 });
