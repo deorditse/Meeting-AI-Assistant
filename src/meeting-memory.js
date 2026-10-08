@@ -105,6 +105,8 @@ function createMeetingMemory(opts) {
       explicitResumePending = false;
       if (!current) {
         current = store.add();
+        const sessionState = typeof cfg.getSessionState === 'function' ? cfg.getSessionState() : null;
+        if (sessionState && typeof sessionState === 'object') store.update(current.id, sessionState);
         notesTurnCount = 0;
         store.prune(cfg.maxMeetings);
         log(`meeting ${current.id} started`);

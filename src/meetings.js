@@ -1,6 +1,6 @@
 // Meeting history + memory — local JSON-file persistence.
 // Each meeting: { id, title, startedAt, endedAt, channels, transcript,
-//   summary, actionItems, followUp, notes, context }
+//   summary, actionItems, followUp, notes, chatParameters, sessionContext }
 // Lightweight retrieval: returns only the last N summaries for memory injection,
 // never the full transcript of every meeting.
 
@@ -72,7 +72,9 @@ function createMeetingStore(opts = {}) {
         decisions: [],
         actionItems: [],
         followUp: '',
-        context: ''
+        context: '',
+        chatParameters: null,
+        sessionContext: null
       };
       meetings.push(m);
       save();

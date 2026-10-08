@@ -25,6 +25,7 @@ const publikBuild = publik.loadBuildConfig();
 const { createMeetingStore } = require('./src/meetings');
 const { createMeetingMemory } = require('./src/meeting-memory');
 const { createMeetingHistoryService } = require('./src/application/meeting-history-service');
+const { buildMeetingSessionSnapshot, buildMeetingSessionRestore } = require('./src/application/meeting-session-state');
 const { registerMeetingHistoryIpc } = require('./src/infrastructure/electron/register-meeting-history-ipc');
 const { createWindowControls } = require('./src/infrastructure/electron/window-controls');
 const { migrateLegacyUserData } = require('./src/user-data-migration');
@@ -201,12 +202,38 @@ function pushTranscript(turn) {
 
 function send(channel, data) { if (win && !win.isDestroyed()) win.webContents.send(channel, data); }
 
+let suppressSessionStatePersistence = false;
 const sessionContextService = createSessionContextService({
-  onChange: (value) => send('session-context:changed', value)
+  onChange: (value) => {
+    send('session-context:changed', value);
+    if (!suppressSessionStatePersistence) persistCurrentSessionState();
+  }
 });
 const whisperRuntimeService = createWhisperRuntimeService({ app, resourcesPath: process.resourcesPath });
 const getWhisperRuntime = () => whisperRuntimeService.locate();
 const clearSessionContext = () => sessionContextService.clear();
+
+function currentSessionState() {
+  return buildMeetingSessionSnapshot(store.getSettings(), sessionContextService.get());
+}
+
+function persistCurrentSessionState() {
+  const current = meetingMemory?.current;
+  if (!current || !meetingStore) return null;
+  return meetingStore.update(current.id, currentSessionState());
+}
+
+function restoreMeetingSessionState(meeting, { notify = true } = {}) {
+  const restored = buildMeetingSessionRestore(meeting);
+  suppressSessionStatePersistence = true;
+  try { sessionContextService.set(restored.sessionContext); }
+  finally { suppressSessionStatePersistence = false; }
+  if (!restored.settingsPatch) return null;
+  const settings = store.setSettings(restored.settingsPatch);
+  if (notify) send('settings:changed', store.redactForRenderer(settings));
+  return settings;
+}
+
 const meetingHistoryService = createMeetingHistoryService({
   getStore: () => meetingStore,
   getCurrentMeeting: () => meetingMemory?.current || null,
@@ -214,7 +241,7 @@ const meetingHistoryService = createMeetingHistoryService({
   endCurrentMeeting: () => { if (meetingMemory) meetingMemory.end().catch(() => {}); },
   resumeMeeting: (id) => {
     if (!meetingMemory) return null;
-    const wasCurrent = meetingMemory.current?.id === id;
+    persistCurrentSessionState();
     const turns = meetingMemory.resume(id);
     if (!turns) return null;
     transcript.splice(0, transcript.length);
@@ -224,7 +251,7 @@ const meetingHistoryService = createMeetingHistoryService({
     }));
     transcript.push(...restored);
     resetSlidesSession();
-    if (!wasCurrent) clearSessionContext();
+    restoreMeetingSessionState(meetingMemory.current);
     send('transcript:replace', { turns: restored, meetingId: id });
     send('status', { message: `Сессия продолжена; восстановлено реплик: ${restored.length}.` });
     return meetingMemory.current;
@@ -818,7 +845,7 @@ async function setCapturing(active) {
       if (notes) send('status', { message: `Заметки встречи сохранены; реплик: ${transcript.length}.` });
     }).catch(() => {});
   }
-  clearSessionContext();
+  persistCurrentSessionState();
   stopSlideLoop();
   buffers.you = []; buffers.them = [];
   vad.you.reset(); vad.them.reset();
@@ -1018,6 +1045,7 @@ ipcMain.handle('screen:list', () => {
 ipcMain.handle('settings:set', (_e, patch) => {
   sttDisabled = false;
   const next = store.setSettings(store.stripRendererPatch(patch));
+  persistCurrentSessionState();
   // Restart slide polling with the new interval when capturing (keeps slides).
   if (state.capturing) startSlideLoop();
   return store.redactForRenderer(next);
@@ -1445,12 +1473,14 @@ function launchApp() {
   meetingMemory = createMeetingMemory({
     store: meetingStore,
     llmFactory: () => createLLM(store.getSettings()),
+    getSessionState: currentSessionState,
     log: (msg) => console.log('[meetings]', msg)
   });
   restoredTurns = meetingMemory.resumeOpen().map((turn) => {
     if (!turn.id) turn.id = `${Number(turn.ts) || Date.now()}-${++transcriptSequence}`;
     return turn;
   });
+  if (meetingMemory.current) restoreMeetingSessionState(meetingMemory.current, { notify: false });
   if (restoredTurns.length) transcript.push(...restoredTurns.slice(-MAX_TRANSCRIPT_TURNS));
   meetingMemory.catchUp().then((n) => { if (n) console.log(`[meetings] wrote notes for ${n} earlier meeting(s)`); }).catch(() => {});
 
@@ -1550,6 +1580,7 @@ app.on('will-quit', () => {
   // Quitting mid-meeting is a pause, not an end: the meeting stays open on disk
   // so a relaunch within the resume window picks it back up (a stale one is
   // closed and its notes written at the next launch). Just get the bytes down.
+  persistCurrentSessionState();
   if (meetingMemory) meetingMemory.flush();
   // Best effort, deliberately not blocking the quit: the library also removes
   // the instance file from a `process.on('exit')` handler, and a file left

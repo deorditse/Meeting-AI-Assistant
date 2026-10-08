@@ -36,6 +36,20 @@ test('the first turn opens a meeting and every turn is persisted', () => {
   assert.equal(store.all()[0].id, memory.current.id);
 });
 
+test('a new meeting stores the current session context and chat parameters', () => {
+  const { store } = harness();
+  const sessionState = {
+    chatParameters: { provider: 'codex', smart: true, aiRules: '', models: { fast: '', smart: '' } },
+    sessionContext: { title: 'Техническое интервью', notes: '', files: [], links: [] }
+  };
+  const memory = createMeetingMemory({ store, llmFactory: () => null, getSessionState: () => sessionState });
+
+  memory.onTurn(turn('them', 'Начнём', 1_000_001));
+
+  assert.deepEqual(store.get(memory.current.id).chatParameters, sessionState.chatParameters);
+  assert.deepEqual(store.get(memory.current.id).sessionContext, sessionState.sessionContext);
+});
+
 test('refreshNotes writes LLM notes and a title once, then only again when there are new turns', async () => {
   const { store, memory, llmCalls, tick } = harness();
   memory.onTurn(turn('them', 'We should ship the Terraform pipeline Tuesday.', 1_000_001));

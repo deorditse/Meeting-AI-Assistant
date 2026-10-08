@@ -624,6 +624,14 @@ export function mountMeetingAssistant() {
     smartBtn.classList.toggle('on', settings.smart);
     await m2a.settingsSet({ smart: settings.smart });
   });
+  m2a.on('settings:changed', (next) => {
+    if (!next) return;
+    settings = next;
+    smartBtn.classList.toggle('on', Boolean(settings.smart));
+    updateSmartTooltip();
+    const settingsScrim = document.getElementById('settings-scrim');
+    if (settingsScrim && !settingsScrim.classList.contains('hidden')) fillSettings();
+  });
 
   // Hide / collapse
   let reopenSidebarOnExpand = false;
