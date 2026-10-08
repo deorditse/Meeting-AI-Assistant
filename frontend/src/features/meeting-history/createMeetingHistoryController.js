@@ -61,7 +61,7 @@ export function createMeetingHistoryController({ bridge, select }) {
     title.textContent = meeting.title || 'Сессия без названия';
     const meta = document.createElement('div');
     meta.className = 'meeting-meta';
-    meta.textContent = `${formatDate(meeting.startedAt)} · ${meeting.transcript?.length || 0} реплик${meeting.active ? ' · идёт сейчас' : ''}`;
+    meta.textContent = `${formatDate(meeting.startedAt)} · ${meeting.transcript?.length || 0} реплик · ${meeting.chatHistory?.length || 0} ответов AI${meeting.active ? ' · идёт сейчас' : ''}`;
     heading.append(title, meta);
     const actions = document.createElement('div');
     actions.className = 'meeting-detail-actions';
@@ -99,6 +99,25 @@ export function createMeetingHistoryController({ bridge, select }) {
       section('Задачи', meeting.actionItems),
       section('Продолжение', meeting.followUp)
     ]) if (block) detailHost.append(block);
+
+    if (meeting.chatHistory?.length) {
+      const chatSection = document.createElement('section');
+      chatSection.className = 'meeting-section meeting-chat-history';
+      const chatTitle = document.createElement('h3');
+      chatTitle.textContent = 'История чата';
+      chatSection.append(chatTitle);
+      for (const message of meeting.chatHistory) {
+        const row = document.createElement('div');
+        row.className = 'meeting-turn meeting-chat-turn';
+        const question = document.createElement('span');
+        question.textContent = message.userBubble || 'Запрос';
+        const answer = document.createElement('p');
+        answer.textContent = message.assistantText || (message.cancelled ? 'Ответ остановлен.' : '');
+        row.append(question, answer);
+        chatSection.append(row);
+      }
+      detailHost.append(chatSection);
+    }
 
     const transcriptSection = document.createElement('section');
     transcriptSection.className = 'meeting-section meeting-transcript';
@@ -148,7 +167,7 @@ export function createMeetingHistoryController({ bridge, select }) {
         const title = document.createElement('strong');
         title.textContent = meeting.title || 'Сессия без названия';
         const meta = document.createElement('span');
-        meta.textContent = `${formatDate(meeting.startedAt)} · ${meeting.transcript?.length || 0} реплик${meeting.active ? ' · активна' : ''}`;
+        meta.textContent = `${formatDate(meeting.startedAt)} · ${meeting.transcript?.length || 0} реплик · ${meeting.chatHistory?.length || 0} ответов AI${meeting.active ? ' · активна' : ''}`;
         button.append(title, meta);
         button.addEventListener('click', () => { void selectMeeting(meeting.id); });
         listHost.append(button);

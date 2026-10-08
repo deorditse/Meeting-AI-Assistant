@@ -265,6 +265,16 @@ button:focus { outline: none; }
 
 /* ============================ Messages ============================ */
 #messages { display: flex; flex: 1; min-height: 0; flex-direction: column; overflow-y: auto; }
+.chat-history-notice {
+  margin: auto 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 12px;
+  background: rgba(255,255,255,0.04);
+  color: var(--tx-mut);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
 .user-bubble {
   align-self: flex-end;
   max-width: 75%;

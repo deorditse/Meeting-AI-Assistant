@@ -229,7 +229,17 @@ function restoreMeetingSessionState(meeting, { notify = true } = {}) {
   suppressSessionStatePersistence = true;
   try { sessionContextService.set(restored.sessionContext); }
   finally { suppressSessionStatePersistence = false; }
-  if (!restored.settingsPatch) return null;
+  if (!restored.settingsPatch) {
+    const settings = store.getSettings();
+    // Legacy sessions did not carry per-chat settings. Materialize a private
+    // snapshot the first time one is resumed so later global changes cannot
+    // silently change that chat again.
+    if (meetingStore && meeting?.id) {
+      meetingStore.update(meeting.id, buildMeetingSessionSnapshot(settings, restored.sessionContext));
+    }
+    if (notify) send('settings:changed', store.redactForRenderer(settings));
+    return settings;
+  }
   const settings = store.setSettings(restored.settingsPatch);
   if (notify) send('settings:changed', store.redactForRenderer(settings));
   return settings;
@@ -277,6 +287,7 @@ const meetingHistoryService = createMeetingHistoryService({
       turns: restored,
       meetingId: id,
       chatHistory: meetingMemory.current.chatHistory || [],
+      chatHistoryLegacy: !Array.isArray(meetingMemory.current.chatHistory),
       settings: store.redactForRenderer(store.getSettings())
     });
     send('status', { message: `Сессия продолжена; восстановлено реплик: ${restored.length}.` });
@@ -472,6 +483,7 @@ function createWindow() {
       send('transcript:restore', {
         turns,
         chatHistory: meetingMemory.current.chatHistory || [],
+        chatHistoryLegacy: !Array.isArray(meetingMemory.current.chatHistory),
         settings: store.redactForRenderer(store.getSettings())
       });
       if (turns.length) {
@@ -818,6 +830,8 @@ async function setCapturing(active) {
       try {
         await startLocalWhisper(settings);
         state.capturing = true;
+        meetingMemory?.ensureCurrent();
+        persistCurrentSessionState();
         console.log('[m2a] capture started, mode: local');
         slideDisabled = false;
         slideTxCursor = transcript.length;
@@ -849,6 +863,8 @@ async function setCapturing(active) {
     }
 
     state.capturing = true;
+    meetingMemory?.ensureCurrent();
+    persistCurrentSessionState();
     // Try streaming first, fall back to batch
     const streaming = initStreamingSTT();
     if (!streaming) {
@@ -1000,6 +1016,8 @@ async function runFeature(mode, userText, excludedTranscriptIds = []) {
       small: !!def.small,
       category
     });
+    meetingMemory?.ensureCurrent();
+    persistCurrentSessionState();
     request.chatEntry = {
       id: `chat-${request.id}-${Date.now()}`,
       ts: Date.now(),

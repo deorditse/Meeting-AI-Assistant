@@ -196,9 +196,16 @@ export function mountMeetingAssistant() {
     aiEl = null; caretEl = null;
   }
 
-  function renderRestoredChat(history) {
+  function renderRestoredChat(history, { legacy = false } = {}) {
     clearMessages();
     responseCount = 0;
+    if (legacy && (!Array.isArray(history) || history.length === 0)) {
+      const notice = document.createElement('div');
+      notice.className = 'chat-history-notice';
+      notice.textContent = 'Эта сессия создана старой версией M2A: расшифровка сохранена, а прежние вопросы и ответы AI тогда ещё не записывались.';
+      messages.appendChild(notice);
+      return;
+    }
     for (const item of (Array.isArray(history) ? history : []).slice(-MAX_RESPONSES)) {
       const group = document.createElement('div');
       group.className = 'response-group';
@@ -1461,19 +1468,19 @@ export function mountMeetingAssistant() {
   });
   // Transcript of a meeting resumed at launch: sidebar rows only — no
   // auto-fill of the input box, which is for live speech.
-  m2a.on('transcript:restore', ({ turns, chatHistory, settings: restoredSettings }) => {
+  m2a.on('transcript:restore', ({ turns, chatHistory, chatHistoryLegacy, settings: restoredSettings }) => {
     sessionRestored = true;
     applyRestoredSettings(restoredSettings);
-    renderRestoredChat(chatHistory);
+    renderRestoredChat(chatHistory, { legacy: chatHistoryLegacy });
     for (const t of turns || []) {
       if (!t || !t.text || t.text.trim().length < 2) continue;
       appendTranscriptHistoryTurn(t.channel, t.text, false, t.id);
     }
   });
-  m2a.on('transcript:replace', ({ turns, chatHistory, settings: restoredSettings }) => {
+  m2a.on('transcript:replace', ({ turns, chatHistory, chatHistoryLegacy, settings: restoredSettings }) => {
     sessionRestored = true;
     applyRestoredSettings(restoredSettings);
-    renderRestoredChat(chatHistory);
+    renderRestoredChat(chatHistory, { legacy: chatHistoryLegacy });
     clearTranscriptSidebar();
     hardClearSTTFill(false);
     for (const turn of turns || []) {

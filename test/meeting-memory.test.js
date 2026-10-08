@@ -50,6 +50,22 @@ test('a new meeting stores the current session context and chat parameters', () 
   assert.deepEqual(store.get(memory.current.id).sessionContext, sessionState.sessionContext);
 });
 
+test('ensureCurrent persists a chat-only session and its own configuration before STT has a turn', () => {
+  const { store } = harness();
+  const sessionState = {
+    chatParameters: { provider: 'claudeCode', smart: false, aiRules: 'Кратко', models: { fast: '', smart: '' } },
+    sessionContext: { title: 'Чат без аудио', notes: '', files: [], links: [] }
+  };
+  const memory = createMeetingMemory({ store, llmFactory: () => null, getSessionState: () => sessionState });
+
+  const meeting = memory.ensureCurrent();
+
+  assert.equal(store.all().length, 1);
+  assert.equal(meeting.transcript.length, 0);
+  assert.deepEqual(store.get(meeting.id).chatParameters, sessionState.chatParameters);
+  assert.deepEqual(store.get(meeting.id).sessionContext, sessionState.sessionContext);
+});
+
 test('refreshNotes writes LLM notes and a title once, then only again when there are new turns', async () => {
   const { store, memory, llmCalls, tick } = harness();
   memory.onTurn(turn('them', 'We should ship the Terraform pipeline Tuesday.', 1_000_001));

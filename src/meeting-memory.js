@@ -66,6 +66,20 @@ function createMeetingMemory(opts) {
   return {
     get current() { return current; },
 
+    // Open a persisted session before the first recognized phrase. This makes
+    // chat-only and screenshot-only sessions first-class: their configuration
+    // and AI history no longer disappear merely because STT heard nothing.
+    ensureCurrent() {
+      if (current) return current;
+      current = store.add();
+      const sessionState = typeof cfg.getSessionState === 'function' ? cfg.getSessionState() : null;
+      if (sessionState && typeof sessionState === 'object') store.update(current.id, sessionState);
+      notesTurnCount = 0;
+      store.prune(cfg.maxMeetings);
+      log(`meeting ${current.id} started`);
+      return current;
+    },
+
     // On launch: pick up a meeting that was still open (no endedAt) if its last
     // turn is recent enough to plausibly be the same conversation. Returns the
     // turns to restore into the live transcript ([] when nothing to resume).
@@ -103,14 +117,7 @@ function createMeetingMemory(opts) {
     onTurn(turn) {
       if (current && !explicitResumePending && now() - lastTurnTs(current) > cfg.resumeWindowMs) this.end();
       explicitResumePending = false;
-      if (!current) {
-        current = store.add();
-        const sessionState = typeof cfg.getSessionState === 'function' ? cfg.getSessionState() : null;
-        if (sessionState && typeof sessionState === 'object') store.update(current.id, sessionState);
-        notesTurnCount = 0;
-        store.prune(cfg.maxMeetings);
-        log(`meeting ${current.id} started`);
-      }
+      this.ensureCurrent();
       store.addTurn(current.id, turn);
     },
 
