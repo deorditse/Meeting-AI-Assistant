@@ -193,6 +193,15 @@ test('opacity is persisted and clamped so the window cannot disappear', () => {
   assert.equal(store.getSettings().opacity, 0.73);
 });
 
+test('chat font size defaults smaller and is persisted within UI limits', () => {
+  const { store } = loadStore();
+  assert.equal(store.getSettings().chatFontSize, 17);
+  assert.equal(store.clampChatFontSize(8), 13);
+  assert.equal(store.clampChatFontSize(30), 24);
+  store.setSettings({ chatFontSize: 19.4 });
+  assert.equal(store.getSettings().chatFontSize, 19);
+});
+
 test('slide-caption app-link consent is tracked per caller, separately from the read/action scope grants', () => {
   const { store, read } = loadStore();
   assert.equal(store.getSlidesConsent('com.publikhq.iris'), undefined);

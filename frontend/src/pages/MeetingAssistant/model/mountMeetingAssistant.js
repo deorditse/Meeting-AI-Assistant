@@ -699,6 +699,31 @@ export function mountMeetingAssistant() {
     el.addEventListener('change', () => applyOpacity(Number(el.value) / 100, true));
   });
 
+  function clampChatFontSize(value) {
+    const n = Number(value);
+    return Number.isFinite(n) ? Math.min(24, Math.max(13, Math.round(n))) : 17;
+  }
+  function applyChatFontSize(value, persist = false) {
+    const size = clampChatFontSize(value);
+    if (settings) settings.chatFontSize = size;
+    document.documentElement.style.setProperty('--chat-font-size', `${size}px`);
+    const slider = $('#s-chat-font-size');
+    const label = $('#s-chat-font-size-value');
+    if (slider) slider.value = String(size);
+    if (label) label.textContent = `${size} px`;
+    if (persist) {
+      clearTimeout(applyChatFontSize.timer);
+      applyChatFontSize.timer = setTimeout(() => {
+        m2a.settingsSet({ chatFontSize: size }).then((next) => { if (next) settings = next; }).catch(() => {});
+      }, 300);
+    }
+  }
+  const chatFontSizeSlider = $('#s-chat-font-size');
+  if (chatFontSizeSlider) {
+    chatFontSizeSlider.addEventListener('input', () => applyChatFontSize(chatFontSizeSlider.value, true));
+    chatFontSizeSlider.addEventListener('change', () => applyChatFontSize(chatFontSizeSlider.value, true));
+  }
+
   // Stop = start/stop listening. The STT backend is started first. In particular,
   // a missing local whisper.cpp runtime must not open macOS Screen Recording just
   // because "meeting audio" is enabled: there is nowhere to send those samples.
@@ -1709,6 +1734,7 @@ export function mountMeetingAssistant() {
     updateAiRulesCounter();
     // Appearance tab
     applyOpacity(settings.opacity, false);
+    applyChatFontSize(settings.chatFontSize, false);
   }
 
   // Whoever m2a has been told it may answer questions for. Empty is the normal
@@ -2025,6 +2051,8 @@ export function mountMeetingAssistant() {
     // Appearance tab
     const opacitySlider = $('#s-opacity-slider');
     if (opacitySlider) settings.opacity = clampOpacity(Number(opacitySlider.value) / 100);
+    const chatFontSizeSlider = $('#s-chat-font-size');
+    if (chatFontSizeSlider) settings.chatFontSize = clampChatFontSize(chatFontSizeSlider.value);
     const screenDisplay = $('#screen-display');
     settings.screenCapture = { ...(settings.screenCapture || {}), displayId: screenDisplay ? screenDisplay.value : 'cursor' };
     try {
@@ -2341,6 +2369,7 @@ export function mountMeetingAssistant() {
     }
 
     applyOpacity(settings.opacity, false);
+    applyChatFontSize(settings.chatFontSize, false);
 
     const st = await m2a.captureState();
     $('#live-dot').classList.toggle('off', !st.active);

@@ -67,6 +67,8 @@ const DEFAULTS = {
   aiRules: '',
   // Overlay opacity (1 = fully opaque). Clamped so the window never vanishes.
   opacity: 1,
+  // Markdown response size in the chat. Kept separate from controls/settings.
+  chatFontSize: 17,
   // Screen pixels are captured only by the explicit screenshot action.
   // 'cursor' means the display containing the pointer at click time.
   screenCapture: { displayId: 'cursor' },
@@ -120,11 +122,19 @@ const DEFAULTS = {
 // stripRendererPatch; settings:get hands out redactForRenderer's view.
 const MIN_OPACITY = 0.2;
 const MAX_OPACITY = 1;
+const MIN_CHAT_FONT_SIZE = 13;
+const MAX_CHAT_FONT_SIZE = 24;
 
 function clampOpacity(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return 1;
   return Math.min(MAX_OPACITY, Math.max(MIN_OPACITY, Math.round(n * 100) / 100));
+}
+
+function clampChatFontSize(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 17;
+  return Math.min(MAX_CHAT_FONT_SIZE, Math.max(MIN_CHAT_FONT_SIZE, Math.round(n)));
 }
 
 const RENDERER_READ_ONLY = ['publik'];
@@ -243,6 +253,9 @@ module.exports = {
   MIN_OPACITY,
   MAX_OPACITY,
   clampOpacity,
+  MIN_CHAT_FONT_SIZE,
+  MAX_CHAT_FONT_SIZE,
+  clampChatFontSize,
   RENDERER_READ_ONLY,
   applyPublikDefault,
   stripRendererPatch,
@@ -267,6 +280,7 @@ module.exports = {
     nextSettings.baseUrl = normalizeBaseUrl(nextSettings.baseUrl);
     nextSettings.sttBaseUrl = normalizeBaseUrl(nextSettings.sttBaseUrl);
     nextSettings.opacity = clampOpacity(nextSettings.opacity);
+    nextSettings.chatFontSize = clampChatFontSize(nextSettings.chatFontSize);
     removeLegacyContextFields(nextSettings);
     data = nextSettings;
     save();

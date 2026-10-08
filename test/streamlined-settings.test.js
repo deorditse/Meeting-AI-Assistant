@@ -81,6 +81,15 @@ test('chat context is a session panel and never a global settings tab', () => {
   assert.match(main, /clearSessionContext\(\);[\s\S]*?stopSlideLoop\(\)/);
 });
 
+test('appearance settings expose a persisted chat font-size slider', () => {
+  const renderer = fs.readFileSync(path.join(root, 'frontend/src/pages/MeetingAssistant/model/mountMeetingAssistant.js'), 'utf8');
+  const store = fs.readFileSync(path.join(root, 'src/store.js'), 'utf8');
+  assert.match(markup, /id="s-chat-font-size"[^>]*min="13"[^>]*max="24"/);
+  assert.match(renderer, /applyChatFontSize\(settings\.chatFontSize, false\)/);
+  assert.match(renderer, /settingsSet\(\{ chatFontSize: size \}\)/);
+  assert.match(store, /chatFontSize: 17/);
+});
+
 test('saved meeting sessions are exposed through a dedicated history panel', () => {
   const preload = fs.readFileSync(path.join(root, 'preload.js'), 'utf8');
   const renderer = fs.readFileSync(path.join(root, 'frontend/src/pages/MeetingAssistant/model/mountMeetingAssistant.js'), 'utf8');
