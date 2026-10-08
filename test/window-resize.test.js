@@ -21,6 +21,9 @@ test('frameless overlay resizes from every visible edge and corner', () => {
   assert.match(windowFeature, /m2a\.windowResizeEnd\(\)/);
   assert.match(preload, /windowResizeStart: \(edge\) => ipcRenderer\.send\('window:resize-start', edge\)/);
   assert.match(windowInfrastructure, /ipcMain\.on\('window:resize-start'/);
+  assert.match(read('frontend/src/app/styles/global.css'), /#panel-wrap \{[\s\S]*flex:\s*1;[\s\S]*min-height:\s*0;/);
+  assert.match(read('frontend/src/app/styles/global.css'), /#panel \{[\s\S]*flex:\s*1;[\s\S]*min-height:\s*0;/);
+  assert.match(read('frontend/src/app/styles/global.css'), /#messages \{[^}]*flex:\s*1;[^}]*overflow-y:\s*auto;/);
 });
 
 test('resized window geometry is persisted and restored', () => {
@@ -35,5 +38,5 @@ test('resized window geometry is persisted and restored', () => {
   assert.match(main, /Number\(savedSettings\.windowWidth\)/);
   assert.match(main, /windowControls\.attachPersistence\(win\)/);
   assert.match(css, /--main-w: calc\(100vw - var\(--side-w\) - var\(--side-w\)\)/);
-  assert.match(css, /#panel-wrap[^\n]+width: calc\(100% - var\(--panel-inset\) - var\(--panel-inset\)\)/);
+  assert.match(css, /#panel-wrap \{[\s\S]*?width: calc\(100% - var\(--panel-inset\) - var\(--panel-inset\)\)/);
 });
