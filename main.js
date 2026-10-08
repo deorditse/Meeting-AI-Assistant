@@ -819,13 +819,20 @@ async function setCapturing(active) {
 }
 
 // -------- feature runner --------
+function cancelActiveFeature() {
+  if (!activeFeature) return false;
+  const request = activeFeature;
+  activeFeature = null;
+  request.controller.abort();
+  state.busy = false;
+  send('llm:done', { cancelled: true });
+  return true;
+}
+
 async function runFeature(mode, userText, excludedTranscriptIds = []) {
   const def = MODES[mode];
   if (!def) return;
-  if (activeFeature) {
-    activeFeature.controller.abort();
-    send('llm:done', { cancelled: true });
-  }
+  cancelActiveFeature();
   const request = { id: ++featureSequence, controller: new AbortController() };
   activeFeature = request;
   const isCurrent = () => activeFeature === request && !request.controller.signal.aborted;
@@ -834,13 +841,13 @@ async function runFeature(mode, userText, excludedTranscriptIds = []) {
   try {
     const settings = store.getSettings();
     const llm = createLLM(settings);
-    const userBubble = def.userBubble !== null
+    const userBubble = mode === 'screen'
+      ? ((userText || '').trim() || null)
+      : def.userBubble !== null
       ? def.userBubble
       : (mode === 'ask' ? userText : mode === 'answerThis' ? `"${(userText || '').slice(0, 60)}${userText && userText.length > 60 ? '…' : ''}"` : null);
     const contextTranscript = selectTranscript(transcript, excludedTranscriptIds);
     const category = mode !== 'leetcode' ? detectCategory(contextTranscript) : null;
-    send('llm:start', { userBubble, small: !!def.small, category });
-
     if (!llm.ready) {
       const message = llm.configurationError || ('Завершите настройку провайдера ' + settings.provider + '. Модель: ' + (llm.model || 'не выбрана') + '.');
       if (settings.provider === publik.PUBLIK_PROVIDER) {
@@ -901,6 +908,13 @@ async function runFeature(mode, userText, excludedTranscriptIds = []) {
           : 'Разговор ещё не записан. Нажмите «Начать сессию», чтобы M2A услышал встречу.' });
       return;
     }
+
+    send('llm:start', {
+      userBubble,
+      userImageDataUrl: def.needsScreen ? imageDataUrl : null,
+      small: !!def.small,
+      category
+    });
 
     const settingsForPrompt = store.getSettings();
     let contextBlock = sessionContextService.buildPromptBlock();
@@ -1234,6 +1248,7 @@ ipcMain.handle('slides:clear', () => {
   return { ok: true };
 });
 ipcMain.on('ask', (_e, payload = {}) => runFeature(payload.mode, payload.text, payload.excludedTranscriptIds));
+ipcMain.on('llm:cancel', () => cancelActiveFeature());
 ipcMain.on('mic:pcm', (_e, arrayBuffer) => { if (state.capturing) routeAudio('you', arrayBuffer); });
 ipcMain.on('system:pcm', (_e, arrayBuffer) => { if (state.capturing) routeAudio('them', arrayBuffer); });
 ipcMain.on('mouse:ignore', (_e, v) => { if (win) win.setIgnoreMouseEvents(!!v, { forward: true }); });

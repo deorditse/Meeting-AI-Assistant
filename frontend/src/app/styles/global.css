@@ -222,6 +222,16 @@ button:focus { outline: none; }
   box-shadow: 0 2px 8px rgba(60,131,245,0.35);
   animation: fadeUp 200ms ease both;
 }
+.user-screen-thumbnail {
+  align-self: flex-end;
+  width: min(220px, 48vw);
+  max-height: 140px;
+  object-fit: cover;
+  border: 1px solid rgba(255,255,255,0.22);
+  border-radius: 12px 12px 4px 12px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.28);
+  animation: fadeUp 200ms ease both;
+}
 .ai-text {
   color: var(--tx-1);
   font-size: 20px; font-weight: 400; line-height: 1.5; letter-spacing: -0.01em;
@@ -481,7 +491,17 @@ button:focus { outline: none; }
 }
 #send-btn:hover { filter: brightness(1.08); transform: scale(1.05); }
 #send-btn:active { transform: scale(0.96); }
-#send-btn.busy { opacity: 0.6; pointer-events: none; }
+#send-btn.busy { opacity: 0.72; }
+.stop-generation-btn {
+  width: 32px; height: 32px; border-radius: 50%;
+  border: 1px solid rgba(248,113,113,0.5);
+  background: rgba(239,68,68,0.16); color: #fca5a5;
+  display: grid; place-items: center; cursor: pointer;
+  transition: transform 140ms ease, background 140ms ease;
+}
+.stop-generation-btn:hover { background: rgba(239,68,68,0.28); transform: scale(1.05); }
+.stop-generation-btn:active { transform: scale(0.96); }
+.stop-generation-btn.hidden { display: none; }
 
 /* ============================ Settings ============================ */
 #settings-scrim, #context-scrim, #meetings-scrim {

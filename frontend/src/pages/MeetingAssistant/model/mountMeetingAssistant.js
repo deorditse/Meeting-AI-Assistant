@@ -28,6 +28,7 @@ export function mountMeetingAssistant() {
   document.querySelector('.act[data-mode="recap"] .ic').innerHTML = icon('refresh-cw', { size: 16 });
   $('#smart-toggle .ic').innerHTML = icon('zap', { size: 14 });
   $('#more-btn').innerHTML = icon('more-horizontal', { size: 18 });
+  $('#stop-generation-btn').innerHTML = icon('square', { size: 13 });
   $('#send-btn').innerHTML = icon('play', { size: 15 });
   const clearIC = document.querySelector('#clear-transcript-btn .ic');
   if (clearIC) clearIC.innerHTML = icon('trash-2', { size: 15 });
@@ -133,10 +134,15 @@ export function mountMeetingAssistant() {
   function setBusy(v) {
     busy = v;
     $('#send-btn').classList.toggle('busy', v);
+    $('#stop-generation-btn').classList.toggle('hidden', !v);
     clearTimeout(busyFailsafe);
-    // Failsafe: main has a 25s stream watchdog that always sends llm:done/llm:error, but if a
-    // terminal event is ever lost the whole UI stays frozen — self-clear after a generous window.
-    if (v) busyFailsafe = setTimeout(() => { busy = false; $('#send-btn').classList.toggle('busy', false); }, 40000);
+    // The local subscription CLIs may take up to two minutes. Keep Stop visible
+    // longer than main's watchdog, while still recovering if a terminal IPC event is lost.
+    if (v) busyFailsafe = setTimeout(() => {
+      busy = false;
+      $('#send-btn').classList.toggle('busy', false);
+      $('#stop-generation-btn').classList.add('hidden');
+    }, 130000);
   }
 
   // ---- transcript helpers ------------------------------------------------
@@ -511,6 +517,7 @@ export function mountMeetingAssistant() {
     runMode(wasFromSTT ? 'answerThis' : 'ask', text);
   }
   $('#send-btn').addEventListener('click', send);
+  $('#stop-generation-btn').addEventListener('click', () => m2a.cancelAnswer());
   input.addEventListener('keydown', (e) => {
     // Ctrl+Z / Cmd+Z: restore last question if input is empty
     if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !input.value.trim()) {
@@ -1200,7 +1207,7 @@ export function mountMeetingAssistant() {
     const title = last && last.caption ? last.caption.split('\n')[0].slice(0, 80) : 'Слайд ' + count;
     showToast(`Слайд ${count} сохранён · ${title}`, 3000);
   });
-  m2a.on('llm:start', ({ userBubble, small, category }) => {
+  m2a.on('llm:start', ({ userBubble, userImageDataUrl, small, category }) => {
     responseCount++;
     if (responseCount > MAX_RESPONSES) {
       const oldest = messages.querySelector('.response-group');
@@ -1213,6 +1220,14 @@ export function mountMeetingAssistant() {
     sep.className = 'response-sep';
     sep.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     group.appendChild(sep);
+    if (userImageDataUrl) {
+      const image = document.createElement('img');
+      image.className = 'user-screen-thumbnail';
+      image.src = userImageDataUrl;
+      image.alt = 'Отправленный снимок экрана';
+      image.title = 'Отправленный снимок экрана';
+      group.appendChild(image);
+    }
     if (userBubble) {
       const b = document.createElement('div');
       b.className = 'user-bubble';
@@ -1249,7 +1264,11 @@ export function mountMeetingAssistant() {
     setBusy(true);
   });
   m2a.on('llm:token', ({ text }) => appendToken(text));
-  m2a.on('llm:done', () => { finalizeAi(); setBusy(false); });
+  m2a.on('llm:done', ({ cancelled } = {}) => {
+    if (cancelled && aiEl && !aiEl.dataset.raw) aiEl.dataset.raw = 'Ответ остановлен.';
+    finalizeAi();
+    setBusy(false);
+  });
   m2a.on('llm:error', ({ message, action }) => {
     if (!aiEl) startAi(true);
     aiEl.dataset.raw = message; finalizeAi(); setBusy(false);

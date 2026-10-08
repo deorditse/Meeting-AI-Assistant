@@ -117,6 +117,28 @@ function cliFailure(label, result) {
   return new Error(`${label} завершился с ошибкой${result.code == null ? '' : ` (код ${result.code})`}.${detail ? ` ${detail}` : ''}`);
 }
 
+function isTransientCodexRoutingFailure(result) {
+  const output = `${result.stderr || ''}\n${result.stdout || ''}`;
+  return /workspace routing discovery failed|reconnecting\.\.\./i.test(output);
+}
+
+function waitForRetry(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal && signal.aborted) return reject(abortError());
+    const finish = () => {
+      if (signal) signal.removeEventListener('abort', onAbort);
+      resolve();
+    };
+    const timer = setTimeout(finish, ms);
+    function onAbort() {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', onAbort);
+      reject(abortError());
+    }
+    if (signal) signal.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
 async function streamCodexSubscription({ system, turns, imageDataUrl, model, onToken = () => {}, signal }) {
   const command = findExecutable('codex');
   if (!command) throw new Error('Codex CLI не найден. Установите Codex и выполните codex login.');
@@ -127,7 +149,15 @@ async function streamCodexSubscription({ system, turns, imageDataUrl, model, onT
     if (model) args.push('--model', model);
     if (screenshotPath) args.push('-i', screenshotPath);
     args.push('-');
-    const result = await runChild(command, args, { cwd: dir, input: promptFromTurns(system, turns), env: subscriptionEnv('codex'), signal });
+    const input = promptFromTurns(system, turns);
+    let result;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      result = await runChild(command, args, { cwd: dir, input, env: subscriptionEnv('codex'), signal });
+      if (result.code === 0 || !isTransientCodexRoutingFailure(result) || attempt === 2) break;
+      // ChatGPT workspace routing can briefly fail before a session is assigned.
+      // A bounded retry fixes that transient without repeating successful requests.
+      await waitForRetry(700 * (attempt + 1), signal);
+    }
     if (result.code !== 0) throw cliFailure('Codex CLI', result);
     const answer = (fs.existsSync(outputFile) ? fs.readFileSync(outputFile, 'utf8') : result.stdout).trim();
     if (!answer) throw new Error('Codex CLI вернул пустой ответ.');

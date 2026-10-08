@@ -12,9 +12,24 @@ test('a new chat action is allowed while the previous answer is streaming', () =
   assert.doesNotMatch(runMode, /if \(busy\) return/);
 
   const main = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
-  assert.match(main, /activeFeature\.controller\.abort\(\)/);
+  assert.match(main, /function cancelActiveFeature\(\)/);
+  assert.match(main, /request\.controller\.abort\(\)/);
   assert.match(main, /activeFeature === request/);
   assert.match(main, /onToken: \(t\) => \{ if \(streamSettled \|\| !isCurrent\(\)\) return;/);
+});
+
+test('the UI can explicitly stop generation and renders screenshot thumbnails', () => {
+  const root = path.join(__dirname, '..');
+  const preload = fs.readFileSync(path.join(root, 'preload.js'), 'utf8');
+  const main = fs.readFileSync(path.join(root, 'main.js'), 'utf8');
+  const renderer = fs.readFileSync(path.join(root, 'frontend/src/pages/MeetingAssistant/model/mountMeetingAssistant.js'), 'utf8');
+  const markup = fs.readFileSync(path.join(root, 'frontend/src/pages/MeetingAssistant/components/MeetingAssistantView/meetingAssistantMarkup.html'), 'utf8');
+
+  assert.match(preload, /cancelAnswer: \(\) => ipcRenderer\.send\('llm:cancel'\)/);
+  assert.match(main, /ipcMain\.on\('llm:cancel', \(\) => cancelActiveFeature\(\)\)/);
+  assert.match(markup, /id="stop-generation-btn"/);
+  assert.match(renderer, /userImageDataUrl/);
+  assert.match(renderer, /user-screen-thumbnail/);
 });
 
 test('aborting a subscription request terminates its CLI process promptly', async () => {
