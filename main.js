@@ -26,6 +26,7 @@ const { createMeetingStore } = require('./src/meetings');
 const { createMeetingMemory } = require('./src/meeting-memory');
 const { createMeetingHistoryService } = require('./src/application/meeting-history-service');
 const { registerMeetingHistoryIpc } = require('./src/infrastructure/electron/register-meeting-history-ipc');
+const { createWindowControls } = require('./src/infrastructure/electron/window-controls');
 const { migrateLegacyUserData } = require('./src/user-data-migration');
 const {
   hashRGBA,
@@ -310,17 +311,15 @@ async function getWhisperOverview() {
 // frontend/src/app/styles/global.css. Saved windowX is the main column's x, not the window's.
 const MAIN_W = 700, SIDE_W = 300;
 const MIN_MAIN_W = 480, MIN_H = 420;
-
-function saveWindowGeometry() {
-  if (!win || win.isDestroyed()) return;
-  const { x, y, width, height } = win.getBounds();
-  store.setSettings({
-    windowX: x + SIDE_W,
-    windowY: y,
-    windowWidth: Math.max(MIN_MAIN_W, width - SIDE_W * 2),
-    windowHeight: Math.max(MIN_H, height)
-  });
-}
+const windowControls = createWindowControls({
+  ipcMain,
+  screen,
+  store,
+  getWindow: () => win,
+  sideWidth: SIDE_W,
+  minimumMainWidth: MIN_MAIN_W,
+  minimumHeight: MIN_H
+});
 
 function createWindow() {
   const { workArea } = screen.getPrimaryDisplay();
@@ -363,7 +362,7 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false
+      sandbox: true
     }
   };
 
@@ -405,13 +404,7 @@ function createWindow() {
 
   loadRendererPage(win);
 
-  let geometrySaveTimer = null;
-  const scheduleGeometrySave = () => {
-    clearTimeout(geometrySaveTimer);
-    geometrySaveTimer = setTimeout(saveWindowGeometry, 500);
-  };
-  win.on('moved', scheduleGeometrySave);
-  win.on('resize', scheduleGeometrySave);
+  windowControls.attachPersistence(win);
 
   win.setTitle('M2A - Meeting AI Assistant');
 
@@ -1284,70 +1277,6 @@ ipcMain.on('llm:cancel', () => cancelActiveFeature());
 ipcMain.on('mic:pcm', (_e, arrayBuffer) => { if (state.capturing) routeAudio('you', arrayBuffer); });
 ipcMain.on('system:pcm', (_e, arrayBuffer) => { if (state.capturing) routeAudio('them', arrayBuffer); });
 ipcMain.on('mouse:ignore', (_e, v) => { if (win) win.setIgnoreMouseEvents(!!v, { forward: true }); });
-// Window dragging is done here rather than with CSS drag regions, which misbehave while the
-// renderer toggles click-through. The window follows the cursor until the renderer says stop.
-let windowDrag = null;
-let windowResize = null;
-ipcMain.on('window:drag-start', () => {
-  if (!win || win.isDestroyed()) return;
-  stopWindowResize();
-  stopWindowDrag();
-  const cursor = screen.getCursorScreenPoint();
-  const bounds = win.getBounds();
-  const offsetX = cursor.x - bounds.x, offsetY = cursor.y - bounds.y;
-  windowDrag = setInterval(() => {
-    if (!win || win.isDestroyed()) { stopWindowDrag(); return; }
-    const { x, y } = screen.getCursorScreenPoint();
-    // setBounds with a fixed size: setPosition can resize the window when crossing mixed-DPI displays on Windows.
-    win.setBounds({ x: x - offsetX, y: y - offsetY, width: bounds.width, height: bounds.height });
-  }, 16);
-});
-ipcMain.on('window:drag-end', () => {
-  if (!windowDrag) return;
-  stopWindowDrag();
-  saveWindowGeometry();
-});
-function stopWindowDrag() {
-  clearInterval(windowDrag);
-  windowDrag = null;
-}
-const RESIZE_EDGES = new Set(['n', 'e', 's', 'w', 'ne', 'se', 'sw', 'nw']);
-ipcMain.on('window:resize-start', (_event, edge) => {
-  if (!win || win.isDestroyed() || !RESIZE_EDGES.has(edge)) return;
-  stopWindowDrag();
-  stopWindowResize();
-  const startCursor = screen.getCursorScreenPoint();
-  const startBounds = win.getBounds();
-  windowResize = {
-    timer: setInterval(() => {
-      if (!win || win.isDestroyed()) { stopWindowResize(); return; }
-      const cursor = screen.getCursorScreenPoint();
-      const dx = cursor.x - startCursor.x;
-      const dy = cursor.y - startCursor.y;
-      let { x, y, width, height } = startBounds;
-      if (edge.includes('e')) width = Math.max(SIDE_W * 2 + MIN_MAIN_W, startBounds.width + dx);
-      if (edge.includes('s')) height = Math.max(MIN_H, startBounds.height + dy);
-      if (edge.includes('w')) {
-        width = Math.max(SIDE_W * 2 + MIN_MAIN_W, startBounds.width - dx);
-        x = startBounds.x + startBounds.width - width;
-      }
-      if (edge.includes('n')) {
-        height = Math.max(MIN_H, startBounds.height - dy);
-        y = startBounds.y + startBounds.height - height;
-      }
-      win.setBounds({ x, y, width, height });
-    }, 16)
-  };
-});
-ipcMain.on('window:resize-end', () => {
-  if (!windowResize) return;
-  stopWindowResize();
-  saveWindowGeometry();
-});
-function stopWindowResize() {
-  if (windowResize) clearInterval(windowResize.timer);
-  windowResize = null;
-}
 ipcMain.on('open-pane', (_e, url) => { shell.openExternal(url).catch(() => {}); });
 ipcMain.on('app:quit', () => app.quit());
 ipcMain.on('log', (_e, msg) => console.log('[renderer]', msg));
@@ -1484,7 +1413,7 @@ function createPermissionsWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
     }
   });
   loadRendererPage(permWin, 'permissions.html');
@@ -1617,6 +1546,7 @@ app.whenReady().then(async () => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
+  windowControls.dispose();
   // Quitting mid-meeting is a pause, not an end: the meeting stays open on disk
   // so a relaunch within the resume window picks it back up (a stale one is
   // closed and its notes written at the next launch). Just get the bytes down.

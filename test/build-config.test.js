@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const pkg = require('../package.json');
+const root = path.join(__dirname, '..');
 
 // Regression test for the actual incident behind the "m2a is damaged and
 // can't be opened" bug reports: package.json used to carry its own legacy
@@ -16,6 +17,14 @@ const pkg = require('../package.json');
 // reintroduces the exact same failure mode.
 test('package.json has no "build" field shadowing electron-builder.cjs', () => {
   assert.equal(Object.prototype.hasOwnProperty.call(pkg, 'build'), false);
+});
+
+test('renderer windows use Chromium sandboxing and production source maps are opt-in', () => {
+  const main = fs.readFileSync(path.join(root, 'main.js'), 'utf8');
+  const vite = fs.readFileSync(path.join(root, 'vite.config.mts'), 'utf8');
+  assert.equal((main.match(/sandbox: true/g) || []).length, 2);
+  assert.doesNotMatch(main, /sandbox: false/);
+  assert.match(vite, /sourcemap: process\.env\.M2A_SOURCE_MAPS === '1'/);
 });
 
 test('dist/pack scripts do not pass an inline --config that could bypass electron-builder.cjs', () => {

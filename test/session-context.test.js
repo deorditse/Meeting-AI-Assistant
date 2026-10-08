@@ -3,7 +3,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { parseDocumentFile } = require('../src/resume');
+const JSZip = require('jszip');
+const { MAX_DOCUMENT_BYTES, extractDocxText, parseDocumentFile } = require('../src/resume');
 const {
   MAX_CONTEXT_ITEM_CHARS,
   normalizeSessionContext,
@@ -62,6 +63,35 @@ test('plain text and markdown files can be loaded as session context', async () 
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('DOCX files are converted to bounded plain text without an XML DOM', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'm2a-docx-'));
+  const file = path.join(dir, 'example.docx');
+  const zip = new JSZip();
+  zip.file('word/document.xml', '<?xml version="1.0"?><w:document xmlns:w="w"><w:body><w:p><w:r><w:t>Первый</w:t></w:r><w:tab/><w:r><w:t>пример &amp; тест</w:t></w:r></w:p><w:p><w:r><w:t>Вторая строка</w:t></w:r><w:br/><w:r><w:t>после переноса</w:t></w:r></w:p></w:body></w:document>');
+  fs.writeFileSync(file, await zip.generateAsync({ type: 'nodebuffer' }));
+  try {
+    assert.equal(await parseDocumentFile(file), 'Первый\tпример & тест\nВторая строка\nпосле переноса');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('document parsing rejects oversized files before reading them into memory', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'm2a-document-limit-'));
+  const file = path.join(dir, 'large.txt');
+  fs.writeFileSync(file, Buffer.alloc(1));
+  fs.truncateSync(file, MAX_DOCUMENT_BYTES + 1);
+  try {
+    await assert.rejects(() => parseDocumentFile(file), /Файл слишком большой/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('DOCX XML extraction decodes numeric entities', () => {
+  assert.equal(extractDocxText('<w:p><w:t>&#1052;&#x32;A</w:t></w:p>'), 'М2A');
 });
 
 test('application service owns an isolated in-memory session and publishes snapshots', () => {

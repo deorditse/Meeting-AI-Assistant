@@ -16,7 +16,9 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, 'renderer-dist'),
     emptyOutDir: true,
-    sourcemap: true,
+    // Packaged builds do not need to ship the renderer's original source.
+    // Opt in only when diagnosing a release build.
+    sourcemap: process.env.M2A_SOURCE_MAPS === '1',
     rollupOptions: {
       output: {
         manualChunks(moduleId) {
