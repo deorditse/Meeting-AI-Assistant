@@ -74,6 +74,9 @@ test('resume payload restores settings and chat history in the renderer', () => 
   assert.match(main, /meetingMemory\?\.ensureCurrent\(\)/);
   assert.match(main, /Legacy sessions did not carry per-chat settings/);
   assert.match(renderer, /function renderRestoredChat\(history,/);
+  assert.match(renderer, /function renderRestoredTranscript\(turns\)/);
+  assert.match(renderer, /renderRestoredChat\(chatHistory, \{ legacy: chatHistoryLegacy, turns \}\)/);
+  assert.match(renderer, /session-transcript-message/);
   assert.match(renderer, /applyRestoredSettings\(restoredSettings\)/);
   assert.match(renderer, /answer\.innerHTML = renderMarkdown/);
   assert.match(renderer, /if \(!sessionRestored\) showExample\(\)/);

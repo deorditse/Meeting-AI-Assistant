@@ -62,6 +62,7 @@ export function mountMeetingAssistant() {
   let responseCount = 0;
   let sessionRestored = false;
   const MAX_RESPONSES = 20;
+  const MAX_RESTORED_TRANSCRIPT_TURNS = 200;
   const excludedTranscriptIds = new Set();
 
   const messages = $('#messages');
@@ -196,14 +197,36 @@ export function mountMeetingAssistant() {
     aiEl = null; caretEl = null;
   }
 
-  function renderRestoredChat(history, { legacy = false } = {}) {
+  function renderRestoredTranscript(turns) {
+    for (const turn of (Array.isArray(turns) ? turns : []).slice(-MAX_RESTORED_TRANSCRIPT_TURNS)) {
+      if (!turn?.text?.trim()) continue;
+      const row = document.createElement('div');
+      row.className = `session-transcript-message ${turn.channel === 'them' ? 'them' : 'you'}`;
+      const meta = document.createElement('div');
+      meta.className = 'session-transcript-meta';
+      const speaker = turn.channel === 'them' ? 'Собеседник' : 'Вы';
+      const time = Number(turn.ts)
+        ? new Date(Number(turn.ts)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        : '';
+      meta.textContent = time ? `${speaker} · ${time}` : speaker;
+      const text = document.createElement('div');
+      text.className = 'session-transcript-text';
+      text.textContent = turn.text;
+      row.append(meta, text);
+      messages.appendChild(row);
+    }
+  }
+
+  function renderRestoredChat(history, { legacy = false, turns = [] } = {}) {
     clearMessages();
     responseCount = 0;
     if (legacy && (!Array.isArray(history) || history.length === 0)) {
       const notice = document.createElement('div');
       notice.className = 'chat-history-notice';
-      notice.textContent = 'Эта сессия создана старой версией M2A: расшифровка сохранена, а прежние вопросы и ответы AI тогда ещё не записывались.';
+      notice.textContent = 'Для этой старой сессии сохранена расшифровка. Прежние ответы AI эта версия M2A ещё не записывала.';
       messages.appendChild(notice);
+      renderRestoredTranscript(turns);
+      messages.scrollTop = messages.scrollHeight;
       return;
     }
     for (const item of (Array.isArray(history) ? history : []).slice(-MAX_RESPONSES)) {
@@ -1471,7 +1494,7 @@ export function mountMeetingAssistant() {
   m2a.on('transcript:restore', ({ turns, chatHistory, chatHistoryLegacy, settings: restoredSettings }) => {
     sessionRestored = true;
     applyRestoredSettings(restoredSettings);
-    renderRestoredChat(chatHistory, { legacy: chatHistoryLegacy });
+    renderRestoredChat(chatHistory, { legacy: chatHistoryLegacy, turns });
     for (const t of turns || []) {
       if (!t || !t.text || t.text.trim().length < 2) continue;
       appendTranscriptHistoryTurn(t.channel, t.text, false, t.id);
@@ -1480,7 +1503,7 @@ export function mountMeetingAssistant() {
   m2a.on('transcript:replace', ({ turns, chatHistory, chatHistoryLegacy, settings: restoredSettings }) => {
     sessionRestored = true;
     applyRestoredSettings(restoredSettings);
-    renderRestoredChat(chatHistory, { legacy: chatHistoryLegacy });
+    renderRestoredChat(chatHistory, { legacy: chatHistoryLegacy, turns });
     clearTranscriptSidebar();
     hardClearSTTFill(false);
     for (const turn of turns || []) {
