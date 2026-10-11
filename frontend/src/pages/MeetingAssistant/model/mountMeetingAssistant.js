@@ -226,7 +226,7 @@ export function mountMeetingAssistant() {
       notice.textContent = 'Для этой старой сессии сохранена расшифровка. Прежние ответы AI эта версия M2A ещё не записывала.';
       messages.appendChild(notice);
       renderRestoredTranscript(turns);
-      messages.scrollTop = messages.scrollHeight;
+      scrollRestoredChatToBottom();
       return;
     }
     for (const item of (Array.isArray(history) ? history : []).slice(-MAX_RESPONSES)) {
@@ -263,7 +263,32 @@ export function mountMeetingAssistant() {
       messages.appendChild(group);
       responseCount++;
     }
-    messages.scrollTop = messages.scrollHeight;
+    scrollRestoredChatToBottom();
+  }
+
+  function scrollRestoredChatToBottom() {
+    // The sessions modal is closed in the same click. Waiting for layout makes
+    // the restored chat use the main panel's real height before we scroll it.
+    window.requestAnimationFrame(() => {
+      messages.scrollTop = messages.scrollHeight;
+    });
+  }
+
+  function restoreMeetingInChat(meeting) {
+    if (!meeting) return;
+    const turns = Array.isArray(meeting.transcript) ? meeting.transcript : [];
+    const chatHistory = meeting.chatHistory;
+    renderRestoredChat(chatHistory, {
+      legacy: !Array.isArray(chatHistory),
+      turns
+    });
+    clearTranscriptSidebar();
+    hardClearSTTFill(false);
+    for (const turn of turns) {
+      if (!turn || !turn.text || turn.text.trim().length < 2) continue;
+      appendTranscriptHistoryTurn(turn.channel, turn.text, false, turn.id);
+    }
+    scrollRestoredChatToBottom();
   }
 
   function applyRestoredSettings(next) {
@@ -1671,7 +1696,11 @@ export function mountMeetingAssistant() {
   });
   const sessionContextController = createSessionContextController({ bridge: m2a, select: $ });
   $('#context-btn').addEventListener('click', () => { void sessionContextController.open(); });
-  const meetingHistoryController = createMeetingHistoryController({ bridge: m2a, select: $ });
+  const meetingHistoryController = createMeetingHistoryController({
+    bridge: m2a,
+    select: $,
+    onResume: restoreMeetingInChat
+  });
   $('#sessions-btn').addEventListener('click', () => { void meetingHistoryController.open(); });
 
   function updateCustomProviderFields() {

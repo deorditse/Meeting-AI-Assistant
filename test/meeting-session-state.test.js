@@ -68,6 +68,7 @@ test('resume payload restores settings and chat history in the renderer', () => 
   const root = path.join(__dirname, '..');
   const main = fs.readFileSync(path.join(root, 'main.js'), 'utf8');
   const renderer = fs.readFileSync(path.join(root, 'frontend/src/pages/MeetingAssistant/model/mountMeetingAssistant.js'), 'utf8');
+  const meetingHistoryController = fs.readFileSync(path.join(root, 'frontend/src/features/meeting-history/createMeetingHistoryController.js'), 'utf8');
 
   assert.match(main, /send\('transcript:replace',[\s\S]*chatHistory:[\s\S]*settings:/);
   assert.match(main, /send\('transcript:restore',[\s\S]*chatHistory:[\s\S]*settings:/);
@@ -77,6 +78,8 @@ test('resume payload restores settings and chat history in the renderer', () => 
   assert.match(renderer, /function renderRestoredTranscript\(turns\)/);
   assert.match(renderer, /renderRestoredChat\(chatHistory, \{ legacy: chatHistoryLegacy, turns \}\)/);
   assert.match(renderer, /session-transcript-message/);
+  assert.match(renderer, /onResume: restoreMeetingInChat/);
+  assert.match(meetingHistoryController, /onResume\?\.\(result\.meeting\)/);
   assert.match(renderer, /applyRestoredSettings\(restoredSettings\)/);
   assert.match(renderer, /answer\.innerHTML = renderMarkdown/);
   assert.match(renderer, /if \(!sessionRestored\) showExample\(\)/);

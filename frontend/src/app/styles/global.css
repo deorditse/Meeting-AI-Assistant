@@ -264,7 +264,19 @@ button:focus { outline: none; }
 #panel-wrap.collapsed { display: none; } /* hides the panel with its status label, live dot, sidebar and toast */
 
 /* ============================ Messages ============================ */
-#messages { display: flex; flex: 1; min-height: 0; flex-direction: column; overflow-y: auto; }
+#messages {
+  display: flex;
+  flex: 1;
+  flex-basis: 0;
+  width: 100%;
+  min-height: 0;
+  max-height: 100%;
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
 .chat-history-notice {
   margin: 0 0 10px;
   padding: 12px 14px;
@@ -846,6 +858,7 @@ button:focus { outline: none; }
   flex: 1;
   min-height: 0;
   min-width: 0; /* allow shrink */
+  overflow: hidden;
 }
 
 /* Transcript history sidebar — attached to the panel's right edge (left edge with .left,

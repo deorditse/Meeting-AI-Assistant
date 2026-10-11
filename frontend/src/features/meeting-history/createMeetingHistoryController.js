@@ -8,7 +8,7 @@ function formatDate(timestamp) {
   return new Intl.DateTimeFormat('ru-RU', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(timestamp));
 }
 
-export function createMeetingHistoryController({ bridge, select }) {
+export function createMeetingHistoryController({ bridge, select, onResume }) {
   const scrim = select('#meetings-scrim');
   const listHost = select('#meetings-list');
   const detailHost = select('#meeting-detail');
@@ -74,6 +74,7 @@ export function createMeetingHistoryController({ bridge, select }) {
       const result = await bridge.meetingsResume(meeting.id);
       if (!result?.ok) return window.alert(result?.message || 'Не удалось продолжить сессию.');
       close();
+      onResume?.(result.meeting);
     });
     const remove = document.createElement('button');
     remove.type = 'button';
