@@ -1502,17 +1502,10 @@ export function mountMeetingAssistant() {
     aiEl.appendChild(caretEl);
     group.appendChild(aiEl);
     messages.appendChild(group);
-    // Use requestAnimationFrame so the DOM is fully updated before scrolling.
-    // Scroll #messages directly rather than calling sep.scrollIntoView(): that
-    // scrolls *every* scrollable ancestor, and once the panel is tall enough it
-    // scrolls the document too, aligning the separator to the top of the window
-    // and pushing #toolbar out of view. html/body are overflow:hidden, so there
-    // is no scrollbar or wheel gesture to undo it — the Stop/Hide/Quit controls
-    // just never come back.
+    // Keep the newly sent message in view. scrollIntoView() also scrolls page
+    // ancestors in a frameless window, so only move the chat scroller itself.
     requestAnimationFrame(() => {
-      if (sep && sep.isConnected) {
-        messages.scrollTo({ top: sep.offsetTop - messages.offsetTop, behavior: 'smooth' });
-      }
+      if (group.isConnected) messages.scrollTo({ top: messages.scrollHeight, behavior: 'smooth' });
     });
     setBusy(true);
   });

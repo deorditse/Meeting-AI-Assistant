@@ -962,6 +962,38 @@ async function runFeature(mode, userText, excludedTranscriptIds = []) {
       : (mode === 'ask' ? effectiveUserText : mode === 'answerThis' ? `"${effectiveUserText.slice(0, 60)}${effectiveUserText.length > 60 ? '…' : ''}"` : null);
     const contextTranscript = mode === 'screen' ? [] : selectTranscript(transcript, excludedTranscriptIds);
     const category = !['screen', 'leetcode'].includes(mode) ? detectCategory(contextTranscript) : null;
+    let chatStarted = false;
+    const startFeatureChat = (imageDataUrl = null) => {
+      if (chatStarted) return;
+      chatStarted = true;
+      send('llm:start', {
+        userBubble,
+        userImageDataUrl: def.needsScreen ? imageDataUrl : null,
+        small: !!def.small,
+        category
+      });
+      meetingMemory?.ensureCurrent();
+      persistCurrentSessionState();
+      request.chatEntry = {
+        id: `chat-${request.id}-${Date.now()}`,
+        ts: Date.now(),
+        mode,
+        userBubble: userBubble || (def.needsScreen ? 'Снимок экрана' : ''),
+        userImageDataUrl: def.needsScreen ? screenshotThumbnail(imageDataUrl) : '',
+        assistantText: '',
+        small: !!def.small,
+        category: category || ''
+      };
+    };
+    const reportFeatureError = (message, action = null) => {
+      if (request.chatEntry) persistFeatureChat(request, { assistantText: message });
+      send('llm:error', { message, ...(action ? { action } : {}) });
+    };
+
+    // Typed questions must appear in the chat as soon as Send is pressed. In
+    // particular, do this before provider readiness checks so a configuration
+    // error cannot silently clear the composer and make the question vanish.
+    if (!def.needsScreen) startFeatureChat();
     if (!llm.ready) {
       const message = llm.configurationError || ('Завершите настройку провайдера ' + settings.provider + '. Модель: ' + (llm.model || 'не выбрана') + '.');
       if (settings.provider === publik.PUBLIK_PROVIDER) {
@@ -971,10 +1003,10 @@ async function runFeature(mode, userText, excludedTranscriptIds = []) {
         const action = !settings.publik.disclosureAccepted
           ? { kind: 'disclosure' }
           : { kind: 'reconnect', label: 'Reconnect' };
-        send('llm:error', { message, action });
+        reportFeatureError(message, action);
         return;
       }
-      send('llm:error', { message });
+      reportFeatureError(message);
       return;
     }
     // Never a silent starter (CONTRACT §12.4): the first-run card — balance,
@@ -983,7 +1015,7 @@ async function runFeature(mode, userText, excludedTranscriptIds = []) {
     // right after provisioning; this gate catches a card that was never
     // acknowledged (e.g. an install provisioned by an earlier release).
     if (settings.provider === publik.PUBLIK_PROVIDER && settings.apiKeys.publik && !settings.publik.cardShown) {
-      send('llm:error', { message: 'publik API настроен. Просмотрите карточку и повторите запрос.', action: { kind: 'card' } });
+      reportFeatureError('publik API настроен. Просмотрите карточку и повторите запрос.', { kind: 'card' });
       return;
     }
 
@@ -1006,6 +1038,7 @@ async function runFeature(mode, userText, excludedTranscriptIds = []) {
         send('llm:error', { message });
         return;
       }
+      startFeatureChat(imageDataUrl);
     }
 
     // Follow-up / Recap have nothing to work with before anything was heard —
@@ -1015,32 +1048,14 @@ async function runFeature(mode, userText, excludedTranscriptIds = []) {
     console.log(`[llm] mode=${mode} transcriptTurns=${contextTranscript.length}/${transcript.length} capturing=${state.capturing}`);
     if (def.transcriptRequired && contextTranscript.length === 0) {
       const hasTranscript = transcript.length > 0;
-      send('llm:error', { message: hasTranscript
+      const message = hasTranscript
         ? 'Все блоки расшифровки исключены из контекста. Нажмите на нужные блоки в истории и повторите запрос.'
         : state.capturing
           ? 'Речь пока не распознана. Скажите что-нибудь или дождитесь реплики собеседника и повторите запрос.'
-          : 'Разговор ещё не записан. Нажмите «Начать сессию», чтобы M2A услышал встречу.' });
+          : 'Разговор ещё не записан. Нажмите «Начать сессию», чтобы M2A услышал встречу.';
+      reportFeatureError(message);
       return;
     }
-
-    send('llm:start', {
-      userBubble,
-      userImageDataUrl: def.needsScreen ? imageDataUrl : null,
-      small: !!def.small,
-      category
-    });
-    meetingMemory?.ensureCurrent();
-    persistCurrentSessionState();
-    request.chatEntry = {
-      id: `chat-${request.id}-${Date.now()}`,
-      ts: Date.now(),
-      mode,
-      userBubble: userBubble || (def.needsScreen ? 'Снимок экрана' : ''),
-      userImageDataUrl: def.needsScreen ? screenshotThumbnail(imageDataUrl) : '',
-      assistantText: '',
-      small: !!def.small,
-      category: category || ''
-    };
 
     const settingsForPrompt = store.getSettings();
     let contextBlock = sessionContextService.buildPromptBlock();

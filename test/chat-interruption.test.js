@@ -18,6 +18,19 @@ test('a new chat action is allowed while the previous answer is streaming', () =
   assert.match(main, /onToken: \(t\) => \{\s*if \(streamSettled \|\| !isCurrent\(\)\) return;/);
 });
 
+test('typed questions are shown before provider readiness checks and scrolled into view', () => {
+  const root = path.join(__dirname, '..');
+  const main = fs.readFileSync(path.join(root, 'main.js'), 'utf8');
+  const renderer = fs.readFileSync(path.join(root, 'frontend/src/pages/MeetingAssistant/model/mountMeetingAssistant.js'), 'utf8');
+  const runFeature = main.slice(main.indexOf('async function runFeature'), main.indexOf('// -------- IPC --------'));
+
+  const chatStart = runFeature.indexOf('if (!def.needsScreen) startFeatureChat();');
+  const readinessCheck = runFeature.indexOf('if (!llm.ready)');
+  assert.ok(chatStart >= 0 && chatStart < readinessCheck, 'typed chat must start before an early provider error');
+  assert.match(runFeature, /persistFeatureChat\(request, \{ assistantText: message \}\)/);
+  assert.match(renderer, /messages\.scrollTo\(\{ top: messages\.scrollHeight, behavior: 'smooth' \}\)/);
+});
+
 test('the UI can explicitly stop generation and renders screenshot thumbnails', () => {
   const root = path.join(__dirname, '..');
   const preload = fs.readFileSync(path.join(root, 'preload.js'), 'utf8');

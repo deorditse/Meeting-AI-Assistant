@@ -4,7 +4,7 @@ function createWindowControls({ ipcMain, screen, store, getWindow, sideWidth, mi
   const minimumWidth = sideWidth * 2 + minimumMainWidth;
   const resizeEdges = new Set(RESIZE_EDGES);
   let dragTimer = null;
-  let resizeTimer = null;
+  let resizeState = null;
 
   function currentWindow() {
     const window = getWindow();
@@ -29,8 +29,7 @@ function createWindowControls({ ipcMain, screen, store, getWindow, sideWidth, mi
   }
 
   function stopResize() {
-    clearInterval(resizeTimer);
-    resizeTimer = null;
+    resizeState = null;
   }
 
   function startDrag() {
@@ -50,26 +49,37 @@ function createWindowControls({ ipcMain, screen, store, getWindow, sideWidth, mi
     }, 16);
   }
 
-  function startResize(edge) {
+  function validPoint(point) {
+    return point && Number.isFinite(point.x) && Number.isFinite(point.y)
+      ? { x: Number(point.x), y: Number(point.y) }
+      : null;
+  }
+
+  function startResize(edge, rendererPoint) {
     const window = currentWindow();
     if (!window || !resizeEdges.has(edge)) return;
     stopDrag();
     stopResize();
-    const startCursor = screen.getCursorScreenPoint();
-    const startBounds = window.getBounds();
-    resizeTimer = setInterval(() => {
-      const activeWindow = currentWindow();
-      if (!activeWindow) { stopResize(); return; }
-      const cursor = screen.getCursorScreenPoint();
-      activeWindow.setBounds(calculateResizeBounds(
-        startBounds,
-        cursor.x - startCursor.x,
-        cursor.y - startCursor.y,
-        edge,
-        minimumWidth,
-        minimumHeight
-      ));
-    }, 16);
+    resizeState = {
+      edge,
+      startCursor: validPoint(rendererPoint) || screen.getCursorScreenPoint(),
+      startBounds: window.getBounds()
+    };
+  }
+
+  function moveResize(rendererPoint) {
+    const window = currentWindow();
+    const point = validPoint(rendererPoint);
+    if (!window || !resizeState || !point) return;
+    const { edge, startCursor, startBounds } = resizeState;
+    window.setBounds(calculateResizeBounds(
+      startBounds,
+      point.x - startCursor.x,
+      point.y - startCursor.y,
+      edge,
+      minimumWidth,
+      minimumHeight
+    ));
   }
 
   ipcMain.on('window:drag-start', startDrag);
@@ -78,9 +88,10 @@ function createWindowControls({ ipcMain, screen, store, getWindow, sideWidth, mi
     stopDrag();
     saveGeometry();
   });
-  ipcMain.on('window:resize-start', (_event, edge) => startResize(edge));
+  ipcMain.on('window:resize-start', (_event, edge, point) => startResize(edge, point));
+  ipcMain.on('window:resize-move', (_event, point) => moveResize(point));
   ipcMain.on('window:resize-end', () => {
-    if (!resizeTimer) return;
+    if (!resizeState) return;
     stopResize();
     saveGeometry();
   });

@@ -5,6 +5,7 @@ export function createWindowControls({ m2a, documentRef = document, windowRef = 
   let dragging = false;
   let resizing = false;
   let resizePointerId = null;
+  const pointerScreenPoint = (event) => ({ x: event.screenX, y: event.screenY });
   const setIgnore = (value) => {
     if (value === ignoring) return;
     ignoring = value;
@@ -51,7 +52,11 @@ export function createWindowControls({ m2a, documentRef = document, windowRef = 
       resizing = true;
       resizePointerId = event.pointerId;
       setIgnore(false);
-      m2a.windowResizeStart(handle.dataset.resizeEdge);
+      m2a.windowResizeStart(handle.dataset.resizeEdge, pointerScreenPoint(event));
+    });
+    handle.addEventListener('pointermove', (event) => {
+      if (!resizing || event.pointerId !== resizePointerId) return;
+      m2a.windowResizeMove(pointerScreenPoint(event));
     });
     handle.addEventListener('pointerup', finishResize);
     handle.addEventListener('pointercancel', finishResize);
