@@ -19,6 +19,7 @@ test('frameless overlay resizes from every visible edge and corner', () => {
   }
   assert.match(renderer, /createWindowControls\(\{ m2a \}\)/);
   assert.match(windowFeature, /m2a\.windowResizeStart\(handle\.dataset\.resizeEdge, pointerScreenPoint\(event\)\)/);
+  assert.match(windowFeature, /setIgnore\(false\);/);
   assert.match(windowFeature, /m2a\.windowResizeMove\(pointerScreenPoint\(event\)\)/);
   assert.match(windowFeature, /m2a\.windowResizeEnd\(\)/);
   assert.match(windowFeature, /handle\.addEventListener\('pointerup', finishResize\)/);
@@ -35,6 +36,8 @@ test('frameless overlay resizes from every visible edge and corner', () => {
   assert.match(css, /#panel-wrap \{[\s\S]*flex:\s*1;[\s\S]*min-height:\s*0;/);
   assert.match(css, /#panel \{[\s\S]*flex:\s*1;[\s\S]*min-height:\s*0;/);
   assert.match(css, /#messages \{[^}]*flex:\s*1;[^}]*overflow-y:\s*auto;/);
+  assert.match(css, /#root,[\s\S]*\.meeting-assistant-root \{[\s\S]*height:\s*100%;/);
+  assert.match(read('frontend/src/pages/MeetingAssistant/components/MeetingAssistantView/MeetingAssistantView.tsx'), /className="meeting-assistant-root"/);
 });
 
 test('resized window geometry is persisted and restored', () => {

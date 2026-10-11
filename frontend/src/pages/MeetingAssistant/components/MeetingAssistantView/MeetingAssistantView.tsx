@@ -11,5 +11,5 @@ export function MeetingAssistantView() {
     mountMeetingAssistant();
   }, []);
 
-  return <div dangerouslySetInnerHTML={{ __html: markup }} />;
+  return <div className="meeting-assistant-root" dangerouslySetInnerHTML={{ __html: markup }} />;
 }

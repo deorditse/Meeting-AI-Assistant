@@ -159,6 +159,29 @@ export function mountMeetingAssistant() {
 
   function clearMessages() { messages.innerHTML = ''; aiEl = null; caretEl = null; }
 
+  let chatScrollFrame = 0;
+  function scrollChatToBottom({ stabilize = false } = {}) {
+    const apply = () => {
+      messages.scrollTop = Math.max(0, messages.scrollHeight - messages.clientHeight);
+    };
+    apply();
+    if (chatScrollFrame) cancelAnimationFrame(chatScrollFrame);
+    chatScrollFrame = requestAnimationFrame(() => {
+      chatScrollFrame = 0;
+      apply();
+      if (stabilize) requestAnimationFrame(apply);
+    });
+  }
+
+  // The composer grows when a transcript fills it and the chat viewport also
+  // changes when the user resizes the frameless window. Keep the newest turn
+  // visible after either layout change; the messages element remains the only
+  // scrolling surface.
+  if (typeof ResizeObserver === 'function') {
+    const chatViewportObserver = new ResizeObserver(() => scrollChatToBottom({ stabilize: true }));
+    chatViewportObserver.observe(messages);
+  }
+
   function addUserBubble(text) {
     const b = document.createElement('div');
     b.className = 'user-bubble';
@@ -188,6 +211,7 @@ export function mountMeetingAssistant() {
     } else {
       aiEl.appendChild(span);
     }
+    scrollChatToBottom();
   }
 
   function finalizeAi() {
@@ -294,11 +318,10 @@ export function mountMeetingAssistant() {
   }
 
   function scrollRestoredChatToBottom() {
-    // The sessions modal is closed in the same click. Waiting for layout makes
-    // the restored chat use the main panel's real height before we scroll it.
-    window.requestAnimationFrame(() => {
-      messages.scrollTop = messages.scrollHeight;
-    });
+    // The sessions modal is closed in the same click and React may have just
+    // established the overlay height. Re-apply after two layout frames so both
+    // restored and freshly mounted sessions end at the latest message.
+    scrollChatToBottom({ stabilize: true });
   }
 
   function restoreMeetingInChat(meeting) {
@@ -1502,11 +1525,9 @@ export function mountMeetingAssistant() {
     aiEl.appendChild(caretEl);
     group.appendChild(aiEl);
     messages.appendChild(group);
-    // Keep the newly sent message in view. scrollIntoView() also scrolls page
-    // ancestors in a frameless window, so only move the chat scroller itself.
-    requestAnimationFrame(() => {
-      if (group.isConnected) messages.scrollTo({ top: messages.scrollHeight, behavior: 'smooth' });
-    });
+    // Keep the newly sent message in view without moving page ancestors in the
+    // frameless window. An explicit scrollTop also works at minimum height.
+    scrollChatToBottom({ stabilize: true });
     setBusy(true);
   });
   m2a.on('llm:token', ({ text }) => appendToken(text));

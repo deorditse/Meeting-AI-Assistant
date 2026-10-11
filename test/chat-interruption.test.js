@@ -28,7 +28,11 @@ test('typed questions are shown before provider readiness checks and scrolled in
   const readinessCheck = runFeature.indexOf('if (!llm.ready)');
   assert.ok(chatStart >= 0 && chatStart < readinessCheck, 'typed chat must start before an early provider error');
   assert.match(runFeature, /persistFeatureChat\(request, \{ assistantText: message \}\)/);
-  assert.match(renderer, /messages\.scrollTo\(\{ top: messages\.scrollHeight, behavior: 'smooth' \}\)/);
+  assert.match(renderer, /function scrollChatToBottom/);
+  assert.match(renderer, /messages\.scrollTop = Math\.max\(0, messages\.scrollHeight - messages\.clientHeight\)/);
+  assert.match(renderer, /scrollChatToBottom\(\{ stabilize: true \}\)/);
+  assert.match(renderer, /new ResizeObserver\(\(\) => scrollChatToBottom\(\{ stabilize: true \}\)\)/);
+  assert.match(renderer, /chatViewportObserver\.observe\(messages\)/);
 });
 
 test('the UI can explicitly stop generation and renders screenshot thumbnails', () => {

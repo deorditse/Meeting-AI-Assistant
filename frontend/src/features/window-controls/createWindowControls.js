@@ -17,7 +17,11 @@ export function createWindowControls({ m2a, documentRef = document, windowRef = 
     const element = documentRef.elementFromPoint(event.clientX, event.clientY);
     setIgnore(!element?.closest?.(INTERACTIVE_SELECTOR));
   });
-  setIgnore(true);
+  // Start interactive so the very first press on an edge can begin resizing.
+  // The first mousemove immediately applies click-through again for genuinely
+  // empty transparent areas. Starting ignored made edge presses disappear on
+  // macOS until a separate hover event happened to reach the renderer.
+  setIgnore(false);
 
   const toolbar = documentRef.querySelector('#toolbar');
   toolbar.addEventListener('pointerdown', (event) => {

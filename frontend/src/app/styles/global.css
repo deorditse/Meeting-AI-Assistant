@@ -45,6 +45,16 @@ html, body {
   user-select: none;
 }
 
+/* React adds two containers between <body> and #app. Every link in that
+   percentage-height chain must have a definite height; otherwise #app's
+   height: 100% resolves to its content height and the flex chat history is
+   squeezed to 0px even though its messages still exist in the DOM. */
+#root,
+.meeting-assistant-root {
+  width: 100%;
+  height: 100%;
+}
+
 /* ============================ Layout ============================ */
 /* Transparent window: no in-page background. You see your real screen behind the panel.
    Empty areas are made click-through from the renderer so they don't block your screen. */
