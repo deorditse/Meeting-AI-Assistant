@@ -78,31 +78,33 @@ html, body {
   z-index: 1000;
   pointer-events: auto;
   touch-action: none;
+  -webkit-app-region: no-drag;
+  user-select: none;
 }
 .resize-n, .resize-s {
   left: calc(var(--side-w) + var(--panel-inset));
   width: calc(var(--main-w) - var(--panel-inset) - var(--panel-inset));
-  height: 8px;
+  height: 16px;
   cursor: ns-resize;
 }
-.resize-n { top: 8px; }
-.resize-s { bottom: 8px; }
+.resize-n { top: 6px; }
+.resize-s { bottom: 6px; }
 .resize-e, .resize-w {
-  top: 8px;
-  bottom: 8px;
-  width: 8px;
+  top: 6px;
+  bottom: 6px;
+  width: 16px;
   cursor: ew-resize;
 }
-.resize-w { left: calc(var(--side-w) + var(--panel-inset) - 4px); }
-.resize-e { right: calc(var(--side-w) + var(--panel-inset) - 4px); }
+.resize-w { left: calc(var(--side-w) + var(--panel-inset) - 8px); }
+.resize-e { right: calc(var(--side-w) + var(--panel-inset) - 8px); }
 .resize-ne, .resize-se, .resize-sw, .resize-nw {
-  width: 14px;
-  height: 14px;
+  width: 24px;
+  height: 24px;
 }
-.resize-ne { top: 5px; right: calc(var(--side-w) + var(--panel-inset) - 7px); cursor: nesw-resize; }
-.resize-se { bottom: 5px; right: calc(var(--side-w) + var(--panel-inset) - 7px); cursor: nwse-resize; }
-.resize-sw { bottom: 5px; left: calc(var(--side-w) + var(--panel-inset) - 7px); cursor: nesw-resize; }
-.resize-nw { top: 5px; left: calc(var(--side-w) + var(--panel-inset) - 7px); cursor: nwse-resize; }
+.resize-ne { top: 2px; right: calc(var(--side-w) + var(--panel-inset) - 12px); cursor: nesw-resize; }
+.resize-se { bottom: 2px; right: calc(var(--side-w) + var(--panel-inset) - 12px); cursor: nwse-resize; }
+.resize-sw { bottom: 2px; left: calc(var(--side-w) + var(--panel-inset) - 12px); cursor: nesw-resize; }
+.resize-nw { top: 2px; left: calc(var(--side-w) + var(--panel-inset) - 12px); cursor: nwse-resize; }
 
 /* ============================ Toolbar pill ============================ */
 #toolbar {

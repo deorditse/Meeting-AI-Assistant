@@ -4,6 +4,7 @@ export function createWindowControls({ m2a, documentRef = document, windowRef = 
   let ignoring = null;
   let dragging = false;
   let resizing = false;
+  let resizePointerId = null;
   const setIgnore = (value) => {
     if (value === ignoring) return;
     ignoring = value;
@@ -35,19 +36,33 @@ export function createWindowControls({ m2a, documentRef = document, windowRef = 
   });
 
   documentRef.querySelectorAll('.window-resize-handle').forEach((handle) => {
+    const finishResize = (event) => {
+      if (!resizing) return;
+      if (event?.pointerId != null && resizePointerId != null && event.pointerId !== resizePointerId) return;
+      resizing = false;
+      resizePointerId = null;
+      m2a.windowResizeEnd();
+    };
+
     handle.addEventListener('pointerdown', (event) => {
       if (event.button !== 0) return;
       event.preventDefault();
       handle.setPointerCapture(event.pointerId);
       resizing = true;
+      resizePointerId = event.pointerId;
       setIgnore(false);
       m2a.windowResizeStart(handle.dataset.resizeEdge);
     });
-    handle.addEventListener('lostpointercapture', () => {
-      if (!resizing) return;
-      resizing = false;
-      m2a.windowResizeEnd();
-    });
+    handle.addEventListener('pointerup', finishResize);
+    handle.addEventListener('pointercancel', finishResize);
+    handle.addEventListener('lostpointercapture', finishResize);
+  });
+
+  windowRef.addEventListener('blur', () => {
+    if (!resizing) return;
+    resizing = false;
+    resizePointerId = null;
+    m2a.windowResizeEnd();
   });
 
   windowRef.addEventListener('scroll', () => {

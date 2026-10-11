@@ -6,6 +6,10 @@ const start = { x: 100, y: 200, width: 800, height: 600 };
 
 test('supports all four edges and corners', () => {
   assert.deepEqual(RESIZE_EDGES, ['n', 'e', 's', 'w', 'ne', 'se', 'sw', 'nw']);
+  assert.deepEqual(calculateResizeBounds(start, 0, -80, 'n', 500, 400), { x: 100, y: 120, width: 800, height: 680 });
+  assert.deepEqual(calculateResizeBounds(start, 0, 80, 's', 500, 400), { x: 100, y: 200, width: 800, height: 680 });
+  assert.deepEqual(calculateResizeBounds(start, -80, 0, 'w', 500, 400), { x: 20, y: 200, width: 880, height: 600 });
+  assert.deepEqual(calculateResizeBounds(start, 80, 0, 'e', 500, 400), { x: 100, y: 200, width: 880, height: 600 });
   assert.deepEqual(calculateResizeBounds(start, 50, 30, 'se', 500, 400), { x: 100, y: 200, width: 850, height: 630 });
   assert.deepEqual(calculateResizeBounds(start, 50, 30, 'nw', 500, 400), { x: 150, y: 230, width: 750, height: 570 });
 });
