@@ -16,6 +16,28 @@ test('add creates a meeting with a unique id', () => {
   const b = s.add();
   assert.notStrictEqual(a.id, b.id);
   assert.strictEqual(a.transcript.length, 0);
+  assert.deepStrictEqual(a.chatHistory, []);
+  assert.strictEqual(a.chatHistoryMigratedFromTranscript, false);
+});
+
+test('migrates legacy meetings so transcript history and future AI chat can coexist', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'm2a-meetings-legacy-'));
+  const file = path.join(dir, 'meetings.json');
+  fs.writeFileSync(file, JSON.stringify([{
+    id: 'legacy',
+    startedAt: 1,
+    transcript: [{ channel: 'them', text: 'Старый вопрос', ts: 2 }],
+    summary: 'Старые итоги'
+  }]));
+
+  const store = createMeetingStore({ file });
+  const meeting = store.get('legacy');
+  assert.deepStrictEqual(meeting.chatHistory, []);
+  assert.strictEqual(meeting.chatHistoryMigratedFromTranscript, true);
+
+  const reloaded = JSON.parse(fs.readFileSync(file, 'utf8'))[0];
+  assert.deepStrictEqual(reloaded.chatHistory, []);
+  assert.strictEqual(reloaded.chatHistoryMigratedFromTranscript, true);
 });
 
 test('addTurn appends and persists to disk', () => {

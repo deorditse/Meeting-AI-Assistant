@@ -31,6 +31,15 @@ function saveMeetingsFile(file, meetings) {
 function createMeetingStore(opts = {}) {
   const file = opts.file;
   let meetings = file ? loadMeetingsFile(file) : [];
+  let migratedLegacyChat = false;
+  for (const meeting of meetings) {
+    if (!Array.isArray(meeting.chatHistory)) {
+      meeting.chatHistory = [];
+      meeting.chatHistoryMigratedFromTranscript = true;
+      migratedLegacyChat = true;
+    }
+  }
+  if (file && migratedLegacyChat) saveMeetingsFile(file, meetings);
   // addTurn fires every few seconds during a meeting; with `debounceMs` set the
   // writes are coalesced so the whole file isn't rewritten per turn. Callers
   // that need the bytes on disk now (quit) call flush().
@@ -69,6 +78,7 @@ function createMeetingStore(opts = {}) {
         endedAt: null,
         transcript: [], // { channel, text, ts }
         chatHistory: [], // { userBubble, assistantText, ts, mode, ... }
+        chatHistoryMigratedFromTranscript: false,
         summary: '',
         keyPoints: [],
         decisions: [],

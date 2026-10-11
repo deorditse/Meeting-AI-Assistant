@@ -265,6 +265,17 @@ function persistFeatureChat(request, patch = {}) {
   meetingStore.update(meeting.id, { chatHistory });
 }
 
+function meetingChatNotes(meeting) {
+  if (!meeting) return null;
+  return {
+    summary: meeting.summary || '',
+    keyPoints: Array.isArray(meeting.keyPoints) ? meeting.keyPoints : [],
+    decisions: Array.isArray(meeting.decisions) ? meeting.decisions : [],
+    actionItems: Array.isArray(meeting.actionItems) ? meeting.actionItems : [],
+    followUp: meeting.followUp || ''
+  };
+}
+
 const meetingHistoryService = createMeetingHistoryService({
   getStore: () => meetingStore,
   getCurrentMeeting: () => meetingMemory?.current || null,
@@ -287,7 +298,8 @@ const meetingHistoryService = createMeetingHistoryService({
       turns: restored,
       meetingId: id,
       chatHistory: meetingMemory.current.chatHistory || [],
-      chatHistoryLegacy: !Array.isArray(meetingMemory.current.chatHistory),
+      chatHistoryLegacy: Boolean(meetingMemory.current.chatHistoryMigratedFromTranscript),
+      meetingNotes: meetingChatNotes(meetingMemory.current),
       settings: store.redactForRenderer(store.getSettings())
     });
     send('status', { message: `Сессия продолжена; восстановлено реплик: ${restored.length}.` });
@@ -483,7 +495,8 @@ function createWindow() {
       send('transcript:restore', {
         turns,
         chatHistory: meetingMemory.current.chatHistory || [],
-        chatHistoryLegacy: !Array.isArray(meetingMemory.current.chatHistory),
+        chatHistoryLegacy: Boolean(meetingMemory.current.chatHistoryMigratedFromTranscript),
+        meetingNotes: meetingChatNotes(meetingMemory.current),
         settings: store.redactForRenderer(store.getSettings())
       });
       if (turns.length) {

@@ -217,17 +217,44 @@ export function mountMeetingAssistant() {
     }
   }
 
-  function renderRestoredChat(history, { legacy = false, turns = [] } = {}) {
+  function renderRestoredMeetingNotes(notes) {
+    if (!notes) return;
+    const sections = [
+      ['Краткое содержание', notes.summary ? [notes.summary] : []],
+      ['Ключевые моменты', notes.keyPoints],
+      ['Решения', notes.decisions],
+      ['Задачи', notes.actionItems],
+      ['Продолжение', notes.followUp ? [notes.followUp] : []]
+    ].filter(([, values]) => Array.isArray(values) && values.length);
+    if (!sections.length) return;
+    const overview = document.createElement('section');
+    overview.className = 'session-restored-overview';
+    const title = document.createElement('h3');
+    title.textContent = 'Итоги восстановленной сессии';
+    overview.appendChild(title);
+    for (const [label, values] of sections) {
+      const heading = document.createElement('strong');
+      heading.textContent = label;
+      overview.appendChild(heading);
+      for (const value of values) {
+        const row = document.createElement('p');
+        row.textContent = String(value || '');
+        overview.appendChild(row);
+      }
+    }
+    messages.appendChild(overview);
+  }
+
+  function renderRestoredChat(history, { legacy = false, turns = [], meetingNotes = null } = {}) {
     clearMessages();
     responseCount = 0;
-    if (legacy && (!Array.isArray(history) || history.length === 0)) {
+    if (legacy) {
       const notice = document.createElement('div');
       notice.className = 'chat-history-notice';
-      notice.textContent = 'Для этой старой сессии сохранена расшифровка. Прежние ответы AI эта версия M2A ещё не записывала.';
+      notice.textContent = 'Старая сессия переведена в новый формат. Итоги и расшифровка восстановлены; прежние ответы AI не записывались. Новые сообщения будут сохраняться ниже.';
       messages.appendChild(notice);
+      renderRestoredMeetingNotes(meetingNotes);
       renderRestoredTranscript(turns);
-      scrollRestoredChatToBottom();
-      return;
     }
     for (const item of (Array.isArray(history) ? history : []).slice(-MAX_RESPONSES)) {
       const group = document.createElement('div');
@@ -279,8 +306,9 @@ export function mountMeetingAssistant() {
     const turns = Array.isArray(meeting.transcript) ? meeting.transcript : [];
     const chatHistory = meeting.chatHistory;
     renderRestoredChat(chatHistory, {
-      legacy: !Array.isArray(chatHistory),
-      turns
+      legacy: Boolean(meeting.chatHistoryMigratedFromTranscript),
+      turns,
+      meetingNotes: meeting
     });
     clearTranscriptSidebar();
     hardClearSTTFill(false);
@@ -1516,19 +1544,19 @@ export function mountMeetingAssistant() {
   });
   // Transcript of a meeting resumed at launch: sidebar rows only — no
   // auto-fill of the input box, which is for live speech.
-  m2a.on('transcript:restore', ({ turns, chatHistory, chatHistoryLegacy, settings: restoredSettings }) => {
+  m2a.on('transcript:restore', ({ turns, chatHistory, chatHistoryLegacy, meetingNotes, settings: restoredSettings }) => {
     sessionRestored = true;
     applyRestoredSettings(restoredSettings);
-    renderRestoredChat(chatHistory, { legacy: chatHistoryLegacy, turns });
+    renderRestoredChat(chatHistory, { legacy: chatHistoryLegacy, turns, meetingNotes });
     for (const t of turns || []) {
       if (!t || !t.text || t.text.trim().length < 2) continue;
       appendTranscriptHistoryTurn(t.channel, t.text, false, t.id);
     }
   });
-  m2a.on('transcript:replace', ({ turns, chatHistory, chatHistoryLegacy, settings: restoredSettings }) => {
+  m2a.on('transcript:replace', ({ turns, chatHistory, chatHistoryLegacy, meetingNotes, settings: restoredSettings }) => {
     sessionRestored = true;
     applyRestoredSettings(restoredSettings);
-    renderRestoredChat(chatHistory, { legacy: chatHistoryLegacy, turns });
+    renderRestoredChat(chatHistory, { legacy: chatHistoryLegacy, turns, meetingNotes });
     clearTranscriptSidebar();
     hardClearSTTFill(false);
     for (const turn of turns || []) {

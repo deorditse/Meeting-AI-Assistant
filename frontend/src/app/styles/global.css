@@ -287,6 +287,19 @@ button:focus { outline: none; }
   font-size: 12.5px;
   line-height: 1.5;
 }
+.session-restored-overview {
+  margin: 0 0 10px;
+  padding: 13px 14px;
+  border: 1px solid rgba(60,131,245,0.24);
+  border-radius: 12px;
+  background: rgba(60,131,245,0.09);
+  color: var(--tx-2);
+  -webkit-user-select: text;
+  user-select: text;
+}
+.session-restored-overview h3 { margin: 0 0 9px; color: #9dc0ff; font-size: 13px; }
+.session-restored-overview strong { display: block; margin-top: 8px; color: var(--tx-1); font-size: 11px; }
+.session-restored-overview p { margin: 3px 0 0; font-size: 12.5px; line-height: 1.45; white-space: pre-wrap; }
 .session-transcript-message {
   width: min(88%, 720px);
   margin: 4px 0;
