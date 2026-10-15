@@ -23,7 +23,8 @@
     "dist:win": "npm run build:renderer && electron-builder --win",
     "pack:win": "npm run build:renderer && electron-builder --win --dir",
     "dist:linux": "npm run build:renderer && electron-builder --linux AppImage --x64",
-    "dist:linux:arm64": "npm run build:renderer && electron-builder --linux AppImage --arm64"
+    "dist:linux:arm64": "npm run build:renderer && electron-builder --linux AppImage --arm64",
+    "test:ui": "playwright test"
   },
   "keywords": [
     "electron",
@@ -34,6 +35,7 @@
     "cross-platform"
   ],
   "devDependencies": {
+    "@playwright/test": "1.56.1",
     "@types/node": "^25.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",

@@ -219,6 +219,9 @@ export function mountMeetingAssistant() {
     const raw = aiEl.dataset.raw || '';
     aiEl.innerHTML = renderMarkdown(raw);
     aiEl = null; caretEl = null;
+    // Markdown introduces block margins and wrapping after streaming ends.
+    // The viewport size stays unchanged, so ResizeObserver cannot catch this.
+    scrollChatToBottom({ stabilize: true });
   }
 
   function renderRestoredTranscript(turns) {

@@ -38,7 +38,7 @@ TypeScript is strict only for the small React shell. Most application code is Ja
 
 ### 4. Renderer lifecycle and integration tests
 
-The renderer registers about 90 DOM/IPC listeners without a unified cleanup path. Current source-pattern tests protect wiring but do not prove complete browser behavior. Feature controllers should return `dispose()` functions. Add Playwright tests against the Vite renderer with a typed mock preload bridge for settings, session history, streaming responses and capture state.
+The renderer registers about 90 DOM/IPC listeners without a unified cleanup path. Source-pattern tests protect wiring. The Playwright harness in `test/browser` now checks resize geometry, clipped-message visibility, send/stream scrolling and history restoration through production preload IPC with mocked Electron transports (see `UI_TESTS.md`). Other renderer features still need browser coverage. Feature controllers should return `dispose()` functions. Extend the browser harness as feature controllers gain typed contracts and lifecycle cleanup.
 
 ### 5. Packaging and runtime upgrades
 
